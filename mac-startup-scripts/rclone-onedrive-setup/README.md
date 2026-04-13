@@ -344,10 +344,11 @@ Use this **only after** [§4](#4-create-your-configsh) is correct and a **manual
 2. Ensures **`config.sh`** exists in the install dir (copies from your clone’s **`config.sh`**, or from **`config.example.sh`** if needed—then **edit** **`EXTERNAL_VOLUME_NAME`** and paths there).
 3. Writes **`~/Library/LaunchAgents/com.rclone-onedrive.mount.plist`** (override with **`--label`**) pointing at **`/bin/bash …/mount_onedrive.sh <volume>`**, with **`PATH`** including Homebrew.
 4. Runs **`launchctl bootstrap gui/$(id -u) …`** (or **`launchctl load`** on older macOS).
+5. Appends **shell aliases** to **`~/.zshrc`** and **`~/.bash_profile`** (marked block, replaced on reinstall): **`install_rclone_ondrive`**, **`mount_rclone_ondrive`**, **`unmount_rclone_onedrive`**, **`uninstall_rclone_onedrive`** — each points at the scripts under the install directory so generic names are not added to **`PATH`**. Run **`source ~/.zshrc`** (or open a new tab) after installing.
 
 ### Dry-run (recommended first)
 
-Checks **macOS**, **`rclone`**, **`rsync`**, **`plutil`**, required source files, and that **`config.sh`** is complete: **`REMOTE_NAME`**, **`REMOTE_PATHS` / `LOCAL_NAMES` / `CACHE_MAX_SIZE`** (same length, no empty entries), and **`EXTERNAL_VOLUME_NAME`** unless you pass a **volume name** on the command line (same rules as **`mount_onedrive.sh`**). Then checks install path writability and validates a **temporary** plist with **`plutil -lint`**. **No files are copied** and **launchd is not changed**.
+Checks **macOS**, **`rclone`**, **`rsync`**, **`plutil`**, required source files, and that **`config.sh`** is complete: **`REMOTE_NAME`**, **`REMOTE_PATHS` / `LOCAL_NAMES` / `CACHE_MAX_SIZE`** (same length, no empty entries), and **`EXTERNAL_VOLUME_NAME`** unless you pass a **volume name** on the command line (same rules as **`mount_onedrive.sh`**). Then checks install path writability and validates a **temporary** plist with **`plutil -lint`**. **No files are copied**, **launchd** is not changed, and **shell rc files** are not modified.
 
 If **`rclone`** is missing, the script exits with **[FAIL]** and prints install hints: **`brew install rclone`** (macOS) and the official installer for Linux/macOS/BSD:
 
@@ -388,7 +389,7 @@ If you used **`--dest`** during install, pass the **same** path:
 ./install.sh --uninstall --dest /your/custom/path
 ```
 
-Removes the LaunchAgent plist, unloads it, and deletes the install directory.
+Removes the LaunchAgent plist, unloads it, strips the **alias** block (and any legacy **PATH** block from older installs) from **`~/.zshrc`** and **`~/.bash_profile`**, and deletes the install directory.
 
 ### Caveats
 

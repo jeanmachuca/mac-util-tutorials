@@ -12,6 +12,8 @@ set -euo pipefail
 
 readonly DEFAULT_LABEL="com.rclone-onedrive.mount"
 readonly DEFAULT_DEST="${HOME}/Library/Application Support/rclone-onedrive-setup"
+readonly ALIAS_HOOK_BEGIN='# >>> rclone-onedrive-setup aliases (install.sh) >>>'
+readonly ALIAS_HOOK_END='# <<< rclone-onedrive-setup aliases <<<'
 
 SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DRY_RUN=0
@@ -367,6 +369,10 @@ run_dry_run() {
 		echo "    $PLIST_PATH"
 		echo "Would ensure directory:"
 		echo "    ${HOME}/Library/LaunchAgents/"
+		echo "Would append shell aliases to:"
+		echo "    ${HOME}/.zshrc"
+		echo "    ${HOME}/.bash_profile"
+		echo "    (install_rclone_ondrive, mount_rclone_ondrive, unmount_rclone_onedrive, uninstall_rclone_onedrive)"
 		echo ""
 		echo "Files that would be copied (same layout as after real install):"
 		find "$SRC" -type f \
@@ -387,6 +393,53 @@ run_dry_run() {
 	return "$err"
 }
 
+# Remove marked blocks written by this installer (aliases now; legacy PATH blocks from older installs).
+remove_rclone_setup_shell_hooks_from_file() {
+	local f="$1"
+	[ -f "$f" ] || return 0
+	if grep -qF 'rclone-onedrive-setup aliases (install.sh)' "$f" 2>/dev/null; then
+		sed -i '' "/^# >>> rclone-onedrive-setup aliases (install.sh) >>>\$/,/^# <<< rclone-onedrive-setup aliases <<<\$/d" "$f"
+	fi
+	if grep -qF 'rclone-onedrive-setup PATH (install.sh)' "$f" 2>/dev/null; then
+		sed -i '' "/^# >>> rclone-onedrive-setup PATH (install.sh) >>>\$/,/^# <<< rclone-onedrive-setup PATH <<<\$/d" "$f"
+	fi
+}
+
+remove_shell_alias_hooks() {
+	local f
+	for f in "${HOME}/.zshrc" "${HOME}/.bash_profile"; do
+		remove_rclone_setup_shell_hooks_from_file "$f"
+	done
+}
+
+# Single-quote a string for safe embedding in shell rc (handles spaces and ' in paths).
+shell_single_quote() {
+	printf "'"
+	printf '%s' "$1" | sed "s/'/'\\\\''/g"
+	printf "'"
+}
+
+# Shell aliases so script names do not clutter PATH (replaced on reinstall; strips legacy PATH hook).
+install_shell_alias_hooks() {
+	local dest="$1"
+	local f
+
+	for f in "${HOME}/.zshrc" "${HOME}/.bash_profile"; do
+		touch "$f"
+		remove_rclone_setup_shell_hooks_from_file "$f"
+		{
+			echo "$ALIAS_HOOK_BEGIN"
+			echo "alias install_rclone_ondrive=$(shell_single_quote "${dest}/install.sh")"
+			echo "alias mount_rclone_ondrive=$(shell_single_quote "${dest}/mount_onedrive.sh")"
+			echo "alias unmount_rclone_onedrive=$(shell_single_quote "${dest}/unmount_onedrive.sh")"
+			echo "alias uninstall_rclone_onedrive=$(shell_single_quote "${dest}/install.sh --uninstall")"
+			echo "$ALIAS_HOOK_END"
+			echo ""
+		} >>"$f"
+		log_ok "Shell aliases appended: $f"
+	done
+}
+
 print_install_summary() {
 	local dest="$1"
 	local plist="$2"
@@ -404,6 +457,15 @@ print_install_summary() {
 	echo "    • $dest/"
 	echo "    • $plist"
 	echo "    • ${HOME}/Library/LaunchAgents/  (directory ensured)"
+	echo "    • ${HOME}/.zshrc  (aliases — see below)"
+	echo "    • ${HOME}/.bash_profile  (same, for bash login shells)"
+	echo ""
+	echo "Shell aliases (after source or new terminal):"
+	echo "    install_rclone_ondrive    → ${dest}/install.sh"
+	echo "    mount_rclone_ondrive      → ${dest}/mount_onedrive.sh"
+	echo "    unmount_rclone_onedrive   → ${dest}/unmount_onedrive.sh"
+	echo "    uninstall_rclone_onedrive → ${dest}/install.sh --uninstall"
+	echo "    In this session run:  source ~/.zshrc   # or ~/.bash_profile"
 	echo ""
 	echo "Files installed under install directory:"
 	if [ -d "$dest" ]; then
@@ -421,8 +483,9 @@ print_install_summary() {
 	echo "    /tmp/rclone-onedrive-mount.log"
 	echo "    /tmp/rclone-onedrive-mount.err"
 	echo ""
-	echo "Try a mount now:"
-	echo "    $mount_script $vol"
+	echo "Try a mount now (after source, or use full path):"
+	echo "    mount_rclone_ondrive $vol"
+	echo "    # or: $mount_script $vol"
 	echo ""
 	echo "====================================="
 }
@@ -435,6 +498,8 @@ do_uninstall() {
 	fi
 	rm -f "$PLIST_PATH"
 	log_ok "Removed plist: $PLIST_PATH"
+	remove_shell_alias_hooks
+	log_ok "Removed shell aliases (and legacy PATH hooks) from ~/.zshrc and ~/.bash_profile (if present)."
 	if [ -d "$DEST" ]; then
 		rm -rf "$DEST"
 		log_ok "Removed install directory: $DEST"
@@ -513,6 +578,8 @@ do_install() {
 			log_warn "Could not bootstrap/load automatically. Try: launchctl bootstrap gui/$(id -u) $PLIST_PATH"
 		fi
 	fi
+
+	install_shell_alias_hooks "$DEST"
 
 	print_install_summary "$DEST" "$PLIST_PATH" "$mount_script" "$vol" "$LABEL"
 }
