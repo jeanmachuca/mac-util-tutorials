@@ -73,8 +73,16 @@ After installation, open **System Settings → Privacy & Security** and approve 
 
 ### rclone
 
+On macOS, Homebrew is typical:
+
 ```bash
 brew install rclone
+```
+
+Alternatively (Linux, macOS, BSD), the upstream one-liner:
+
+```bash
+sudo -v ; curl https://rclone.org/install.sh | sudo bash
 ```
 
 Confirm:
@@ -175,7 +183,7 @@ cd rclone-onedrive-setup
 Make the scripts executable:
 
 ```bash
-chmod +x mount_onedrive.sh unmount_onedrive.sh
+chmod +x mount_onedrive.sh unmount_onedrive.sh install.sh
 ```
 
 ## 4. Create your `config.sh`
@@ -198,11 +206,12 @@ cp config.example.sh config.sh
 Edit `config.sh` so that:
 
 - **`REMOTE_NAME`** matches the name you used in `rclone config`.
+- **`EXTERNAL_VOLUME_NAME`** is the **exact** name of your external disk in Finder / `/Volumes/` (for example `MyPassport`). Used by **`install.sh`** for the LaunchAgent; you still pass the same name to **`mount_onedrive.sh`** manually if you run it by hand.
 - **`REMOTE_PATHS`** lists folders **on OneDrive** (as returned by `rclone lsd`).
 - **`LOCAL_NAMES`** lists the folder names you want under `/Volumes/<YourDrive>/OneDrive/` on the external disk.
 - **`CACHE_MAX_SIZE`** sets a per-mount VFS cache limit (for example `50G`).
 
-All four arrays must have the **same number** of entries. You can use one folder or many.
+All **`REMOTE_PATHS` / `LOCAL_NAMES` / `CACHE_MAX_SIZE`** arrays must have the **same number** of entries. You can use one folder or many.
 
 ## 5. Mount
 
@@ -317,11 +326,79 @@ If the Mac **restarted while the drive was still connected**, macOS typically **
 
 ### Optional automation
 
-To run **`mount_onedrive.sh`** automatically at login, see [Optional: run mounts at login (LaunchAgent)](#optional-run-mounts-at-login-launchagent). The disk must be **plugged in** (or the script will exit with “drive not found”); check the log paths in the plist if it does not mount on first try.
+To run **`mount_onedrive.sh`** automatically at login, use **`install.sh`** ([next section](#optional-installsh-application-support-and-login-mount)) or set up a **LaunchAgent** [manually](#optional-manual-launchagent-plist-advanced). The disk must be **plugged in** (or the script will exit with “drive not found”); check **`/tmp/rclone-onedrive-mount.log`** and **`.err`** if it does not mount on first try.
 
-## Optional: run mounts at login (LaunchAgent)
+## Optional: install.sh (Application Support and login mount)
 
-A **LaunchAgent** runs **`mount_onedrive.sh`** once when you **log in** (`RunAtLoad`). Use this only after **`config.sh`** works and a **manual** `./mount_onedrive.sh YourVolume` succeeds.
+**`install.sh`** copies this folder to a fixed location under your **home directory**, then installs a **LaunchAgent** so **`mount_onedrive.sh`** runs **once at login** (`RunAtLoad`). Default install path:
+
+```text
+~/Library/Application Support/rclone-onedrive-setup/
+```
+
+Use this **only after** [§4](#4-create-your-configsh) is correct and a **manual** mount works ([§5](#5-mount)).
+
+### What it does
+
+1. **`rsync`** from the directory containing **`install.sh`** into **`~/Library/Application Support/rclone-onedrive-setup/`** (excludes `.git`, `.DS_Store`, `.cursor`, `*.swp`).
+2. Ensures **`config.sh`** exists in the install dir (copies from your clone’s **`config.sh`**, or from **`config.example.sh`** if needed—then **edit** **`EXTERNAL_VOLUME_NAME`** and paths there).
+3. Writes **`~/Library/LaunchAgents/com.rclone-onedrive.mount.plist`** (override with **`--label`**) pointing at **`/bin/bash …/mount_onedrive.sh <volume>`**, with **`PATH`** including Homebrew.
+4. Runs **`launchctl bootstrap gui/$(id -u) …`** (or **`launchctl load`** on older macOS).
+
+### Dry-run (recommended first)
+
+Checks **macOS**, **`rclone`**, **`rsync`**, **`plutil`**, required source files, and that **`config.sh`** is complete: **`REMOTE_NAME`**, **`REMOTE_PATHS` / `LOCAL_NAMES` / `CACHE_MAX_SIZE`** (same length, no empty entries), and **`EXTERNAL_VOLUME_NAME`** unless you pass a **volume name** on the command line (same rules as **`mount_onedrive.sh`**). Then checks install path writability and validates a **temporary** plist with **`plutil -lint`**. **No files are copied** and **launchd is not changed**.
+
+If **`rclone`** is missing, the script exits with **[FAIL]** and prints install hints: **`brew install rclone`** (macOS) and the official installer for Linux/macOS/BSD:
+
+```bash
+sudo -v ; curl https://rclone.org/install.sh | sudo bash
+```
+
+```bash
+./install.sh --dry-run
+# Or override the volume name for this check only:
+./install.sh --dry-run MyPassport
+```
+
+### Install
+
+```bash
+chmod +x install.sh   # if needed
+./install.sh
+```
+
+Optional flags:
+
+| Flag | Meaning |
+|------|---------|
+| **`--dest DIR`** | Install directory instead of the default under Application Support. |
+| **`--label com.you.id`** | LaunchAgent label / plist name (default **`com.rclone-onedrive.mount`**). |
+| *(positional)* **`MyVolume`** | Volume name for plist if you do not set **`EXTERNAL_VOLUME_NAME`** in **`config.sh`**. |
+
+### Uninstall
+
+```bash
+./install.sh --uninstall
+```
+
+If you used **`--dest`** during install, pass the **same** path:
+
+```bash
+./install.sh --uninstall --dest /your/custom/path
+```
+
+Removes the LaunchAgent plist, unloads it, and deletes the install directory.
+
+### Caveats
+
+- **Login, not firmware boot:** the job runs when **your user** logs in.
+- If the USB disk appears **after** the job runs, the mount may fail once; plug in earlier or run **`mount_onedrive.sh`** manually from the install dir.
+- Re-run **`./install.sh`** after editing scripts in the clone to **refresh** the Application Support copy.
+
+## Optional: Manual LaunchAgent plist (advanced)
+
+A **LaunchAgent** runs **`mount_onedrive.sh`** once when you **log in** (`RunAtLoad`). Use the steps below only if you **do not** use **`install.sh`**.
 
 ### Prerequisites
 
@@ -421,12 +498,13 @@ Then remove or rename the plist file if you no longer want it.
 |--------|-------------|
 | Finder says the disk **can’t be ejected** / **in use** | Run **`unmount_onedrive.sh`** first ([§6](#6-unmount-and-eject-safely)). Do **not** use **Force Eject** while `rclone` is still mounting that drive. |
 | **Sidebar favorite** to a mount is gray or “can’t be opened” | Expected when the drive is **ejected** or **`mount_onedrive.sh`** has not been run. Remount with the script; if the **volume name** changed, remove the old favorite and drag the folder again. |
-| After **restart / shutdown**, cloud folders are “gone” in Finder | Normal: **`rclone mount` does not survive reboot.** Plug in the drive and run **`mount_onedrive.sh`** again ([§ After a Mac restart](#after-a-mac-restart)). Use a **LaunchAgent** if you want login automation. |
+| After **restart / shutdown**, cloud folders are “gone” in Finder | Normal: **`rclone mount` does not survive reboot.** Plug in the drive and run **`mount_onedrive.sh`** again ([§ After a Mac restart](#after-a-mac-restart)), or use **`install.sh`** / a **LaunchAgent** for login automation. |
 | Mount fails: directory not empty | The scripts use `--allow-non-empty`. If it still fails, remove stray files in the mount folder (except do not delete data you care about). |
 | I/O or “stuck” mount after unplugging | Follow [§6](#6-unmount-and-eject-safely) next time. In a bad state: `umount` the paths under `.../OneDrive/` or stop the matching `rclone` processes, then try again. |
 | OneDrive auth expired | `rclone config reconnect onedrive:` (adjust remote name if needed). |
 | macFUSE / security prompts | Re-check **Privacy & Security** and macFUSE documentation for your macOS version. |
-| **LaunchAgent** did not mount at login | Read **`/tmp/rclone-onedrive-mount.err`** and **`.log`**. Confirm the volume was present, **`config.sh`** exists, **`ProgramArguments`** paths are correct, and **`PATH`** in the plist includes **`which rclone`**. Run **`mount_onedrive.sh`** manually once the disk is connected. See [LaunchAgent](#optional-run-mounts-at-login-launchagent). |
+| **`install.sh --dry-run` fails** | Fix reported **[FAIL]** lines (often missing **`EXTERNAL_VOLUME_NAME`** in **`config.sh`**, **`rclone`**, or path permissions). |
+| **LaunchAgent** did not mount at login | Read **`/tmp/rclone-onedrive-mount.err`** and **`.log`**. Confirm the volume was present, **`config.sh`** in the **install dir** has **`EXTERNAL_VOLUME_NAME`**, and **`PATH`** in the plist includes **`which rclone`**. Run **`mount_onedrive.sh`** manually from **`~/Library/Application Support/rclone-onedrive-setup/`** once the disk is connected. See [install.sh](#optional-installsh-application-support-and-login-mount) or [manual plist](#optional-manual-launchagent-plist-advanced). |
 
 ## Why exFAT for the external drive (and APFS pain points in this setup)
 

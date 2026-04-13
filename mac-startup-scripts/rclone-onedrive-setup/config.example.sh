@@ -6,6 +6,9 @@
 
 REMOTE_NAME="onedrive"
 
+# External disk volume name as shown in Finder / /Volumes/ (required for install.sh + LaunchAgent)
+EXTERNAL_VOLUME_NAME="MyPassport"
+
 # Paths on the cloud remote (same names you see in rclone / OneDrive)
 REMOTE_PATHS=(
   "Documents"
