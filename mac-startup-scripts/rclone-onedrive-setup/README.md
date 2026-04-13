@@ -83,27 +83,85 @@ Confirm:
 rclone version
 ```
 
-## 2. Configure the OneDrive remote
+## 2. Configure the OneDrive remote (`rclone config`)
 
-Create or update the remote interactively:
+This guide matches the **recommended setup for this repo**: a **normal Mac** with a browser, **OneDrive Personal or work/school OneDrive**, and **`rclone mount` on the host** (not a headless server). Wording and **menu numbers** can differ slightly by **rclone version**—always match what your terminal shows.
 
 ```bash
 rclone config
 ```
 
-Typical choices:
+Full backend reference: [rclone.org/onedrive](https://rclone.org/onedrive/).
 
-1. **New remote** → pick a short name (this repo’s example uses `onedrive`).
-2. **Storage** → **Microsoft OneDrive** (or **Microsoft OneDrive for Business** if you use work/school).
-3. Complete the browser **OAuth** sign-in when rclone asks.
+### Quick answer key (happy path)
 
-List top-level folders to see exact path names (including spaces):
+Use this sequence if you are setting up for the first time on your Mac:
+
+| # | When you see… | Enter / choose |
+|---|----------------|----------------|
+| 1 | Main menu | **`n`** (New remote) |
+| 2 | `name>` | **`onedrive`** (matches `config.example.sh` and the scripts; any other name is fine if you change it everywhere) |
+| 3 | Storage / “type of storage” | Type **`onedrive`** or pick the **Microsoft OneDrive** line by **number** |
+| 4 | `client_id` | **Enter** (empty — use rclone’s default Microsoft app) |
+| 5 | `client_secret` | **Enter** (empty) |
+| 6 | Region / national cloud (if asked) | **`global`** or **default** — commercial Microsoft 365 / Outlook.com |
+| 7 | Edit advanced config? | **`n`** — keep defaults unless IT gave you specific URLs or you are doing SharePoint / app-only flows |
+| 8 | Use web browser to authenticate? | **`y`** — you are on a Mac with Safari/Chrome; this is the same “sign in in a browser” flow that works reliably for desktop use |
+| 9 | Sign in in the browser | Complete Microsoft login and **Allow** rclone |
+| 10 | After “Got code” — type of connection | **`1`** / **OneDrive Personal or Business** (not SharePoint / drive ID / search) unless you *only* use a SharePoint library |
+| 11 | “Chose drive to use” (if several listed) | **`0`** for your main OneDrive, or the line that matches **your** account |
+| 12 | “Is that okay?” / summary | **`y`** |
+| 13 | Keep this remote? | **`y`** |
+
+That is the same class of choices that works when you want **Finder-visible mounts** on the Mac: standard OAuth on the machine, normal OneDrive, no Docker-only token dance.
+
+### Prompt-by-prompt: what we recommend and when to diverge
+
+| Prompt | **Recommended** | **Change only if** |
+|--------|-----------------|---------------------|
+| **New vs edit** | **`n`** for new | **`e`** to fix an existing remote (e.g. refresh token, wrong drive). |
+| **Remote name** | **`onedrive`** | You already use that name for something else; then update **`REMOTE_NAME`** in `config.sh` and commands. |
+| **Storage backend** | **Microsoft OneDrive** (`onedrive`) | You are not using OneDrive at all (wrong guide). |
+| **`client_id` / `client_secret`** | **Empty** | Microsoft throttles the shared app, or your org requires a **registered Azure app** — see [rclone: own Client ID](https://rclone.org/onedrive/#getting-your-own-client-id-and-key). |
+| **Region** | **`global`** (or default) | **US Government**, **China**, or legacy **Germany** tenant — see [rclone region](https://rclone.org/onedrive/#standard-options). |
+| **Edit advanced config?** | **`n`** | Single-tenant **auth_url** / **token_url**, **client credentials** flow, custom **access_scopes**, etc. — follow IT or [upstream docs](https://rclone.org/onedrive/). |
+| **Browser auth** | **`y`** | **No browser** on that machine — use **`n`** and [headless / remote config](https://rclone.org/remote_setup/). |
+| **Connection type** (Personal/Business vs SharePoint…) | **OneDrive Personal or Business** | You need a **SharePoint document library** or a known **drive ID** only. |
+| **Which drive index** | **`0`** when it is clearly your main OneDrive | You have several drives and need another index. |
+| **Confirm / keep remote** | **`y`** | You need to go back — use **`e`** in the menu to edit. |
+
+### If you already said **Yes** to advanced config
+
+Prefer **press Enter** on every option to accept the documented default, unless you have a reason. Common knobs:
+
+| Option | **Recommended for this tutorial** | **Notes** |
+|--------|-------------------------------------|-----------|
+| **`client_credentials`** | **false** (default) | **true** is for app-only / automation tenants, not a typical user mount. |
+| **`auth_url` / `token_url`** | **Empty** (defaults) | Set only when IT gives **tenant-specific** Microsoft login URLs. |
+| **`chunk_size`** | **Default** (often 10Mi) | Increase only if you understand memory use; must follow rclone’s 320 KiB rules. |
+| **`upload_cutoff`** | **Default** | Changing affects large uploads / versioning behavior on Business. |
+| **`disable_site_permission`** | **false** unless consent is blocked | **true** if your org blocks **Sites.Read.All** and you do not need SharePoint site search during config. |
+| **`expose_onenote_files`** | **false** (default) | **true** if you need OneNote items visible or deletable in listings. |
+
+### Firewall / localhost
+
+OAuth uses **`http://127.0.0.1:53682/`** briefly. If nothing happens after **`y`**, check firewall / security software for that loopback port.
+
+### Check that it works
 
 ```bash
 rclone lsd onedrive:
 ```
 
-(Replace `onedrive` if you chose a different remote name.)
+(Replace `onedrive` if you used another remote name.) Folder names must match **`REMOTE_PATHS`** in `config.sh` exactly.
+
+### Later: token expired or re-auth
+
+```bash
+rclone config reconnect onedrive:
+```
+
+Or **`e`** (edit remote) and refresh when rclone offers **“Already have a token - refresh?”** — see [rclone MFA / token refresh](https://rclone.org/onedrive/).
 
 ## 3. Install these scripts
 
