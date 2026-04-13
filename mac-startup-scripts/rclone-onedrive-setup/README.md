@@ -91,6 +91,33 @@ Confirm:
 rclone version
 ```
 
+#### macOS: rclone Gatekeeper warning (quarantine)
+
+If macOS shows a dialog like **“rclone” Not Opened** — *Apple could not verify “rclone” is free of malware* — that usually means the binary was **downloaded from the internet** and still has Apple’s **quarantine** flag (common with the **upstream curl installer**, less often with **Homebrew**). Do **not** choose **Move to Bin** if you intend to use rclone.
+
+![macOS Gatekeeper dialog blocking rclone](docs/rclone-gatekeeper-macos.png)
+
+**Ways to proceed (pick one):**
+
+1. **Prefer Homebrew** (often the smoothest path on Mac): `brew install rclone`, then run `rclone version` again.
+2. **Remove quarantine** from the binary you already installed (path from `which rclone`):
+
+   ```bash
+   xattr -d com.apple.quarantine "$(command -v rclone)"
+   ```
+
+   If that fails, clear quarantine on the **directory that contains** the binary (still scoped to that folder only):
+
+   ```bash
+   xattr -dr com.apple.quarantine "$(dirname "$(command -v rclone)")"
+   ```
+
+   If you see “Operation not permitted”, run the same command with **`sudo`** (sometimes needed under **`/usr/local`**).
+
+3. **System Settings → Privacy & Security**: after you try to run **`rclone`** once from **Terminal**, scroll for a message about **rclone** being blocked and use **Open Anyway** (wording varies by macOS version).
+
+Then run **`rclone version`** again from Terminal.
+
 ## 2. Configure the OneDrive remote (`rclone config`)
 
 This guide matches the **recommended setup for this repo**: a **normal Mac** with a browser, **OneDrive Personal or work/school OneDrive**, and **`rclone mount` on the host** (not a headless server). Wording and **menu numbers** can differ slightly by **rclone version**—always match what your terminal shows.
@@ -504,6 +531,7 @@ Then remove or rename the plist file if you no longer want it.
 | I/O or “stuck” mount after unplugging | Follow [§6](#6-unmount-and-eject-safely) next time. In a bad state: `umount` the paths under `.../OneDrive/` or stop the matching `rclone` processes, then try again. |
 | OneDrive auth expired | `rclone config reconnect onedrive:` (adjust remote name if needed). |
 | macFUSE / security prompts | Re-check **Privacy & Security** and macFUSE documentation for your macOS version. |
+| **“rclone” Not Opened** / malware warning when opening rclone | Quarantine on a downloaded binary — see [macOS: rclone Gatekeeper warning (quarantine)](#macos-rclone-gatekeeper-warning-quarantine). Prefer **`brew install rclone`**, or **`xattr -d com.apple.quarantine "$(command -v rclone)"`**, or **Privacy & Security → Open Anyway** after attempting once in Terminal. |
 | **`install.sh --dry-run` fails** | Fix reported **[FAIL]** lines (often missing **`EXTERNAL_VOLUME_NAME`** in **`config.sh`**, **`rclone`**, or path permissions). |
 | **LaunchAgent** did not mount at login | Read **`/tmp/rclone-onedrive-mount.err`** and **`.log`**. Confirm the volume was present, **`config.sh`** in the **install dir** has **`EXTERNAL_VOLUME_NAME`**, and **`PATH`** in the plist includes **`which rclone`**. Run **`mount_onedrive.sh`** manually from **`~/Library/Application Support/rclone-onedrive-setup/`** once the disk is connected. See [install.sh](#optional-installsh-application-support-and-login-mount) or [manual plist](#optional-manual-launchagent-plist-advanced). |
 
