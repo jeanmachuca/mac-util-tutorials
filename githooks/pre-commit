@@ -1,0 +1,16 @@
+#!/bin/sh
+# Reject commits that stage rclone-onedrive-setup/config.sh (local/private).
+# Enable with: git config core.hooksPath githooks  (from repo root)
+
+set -e
+BLOCKED=$(git diff --cached --name-only --diff-filter=ACM |
+	grep -E '(^|/)rclone-onedrive-setup/config\.sh$' || true)
+if [ -n "$BLOCKED" ]; then
+	echo >&2 ""
+	echo >&2 "ERROR: Blocked commit: rclone-onedrive-setup/config.sh is staged."
+	echo >&2 "That file is for your machine only (OneDrive paths; keep it out of GitHub)."
+	echo >&2 "Unstage it:"
+	echo >&2 "  git reset HEAD -- mac-startup-scripts/rclone-onedrive-setup/config.sh"
+	echo >&2 ""
+	exit 1
+fi

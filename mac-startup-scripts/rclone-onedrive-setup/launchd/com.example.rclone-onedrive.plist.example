@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Copy this file to ~/Library/LaunchAgents/ and rename (see README).
+  Replace CHANGE_ME_* placeholders before loading.
+
+  Label must be unique on your Mac and should match the plist filename:
+    Label com.myname.rclone-onedrive  ->  com.myname.rclone-onedrive.plist
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>CHANGE_ME_LABEL</string>
+
+    <!-- Run via bash so the script does not need execute bit for launchd -->
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>CHANGE_ME_FULL_PATH_TO/mount_onedrive.sh</string>
+        <string>CHANGE_ME_VOLUME_NAME</string>
+    </array>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <!-- launchd uses a minimal PATH; Homebrew is usually not included -->
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    </dict>
+
+    <key>StandardOutPath</key>
+    <string>/tmp/rclone-onedrive-mount.log</string>
+    <key>StandardErrorPath</key>
+    <string>/tmp/rclone-onedrive-mount.err</string>
+
+    <!-- Do not respawn forever if the drive is missing at login -->
+    <key>KeepAlive</key>
+    <false/>
+</dict>
+</plist>

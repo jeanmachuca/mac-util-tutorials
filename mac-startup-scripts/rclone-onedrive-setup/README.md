@@ -122,7 +122,16 @@ chmod +x mount_onedrive.sh unmount_onedrive.sh
 
 ## 4. Create your `config.sh`
 
-The mount script reads **`config.sh`** (not committed to git). Copy the example and edit it:
+The mount script reads **`config.sh`**, which **must stay local** (it describes your real OneDrive folders). It is **`gitignore`d**, and this repository includes a **pre-commit hook** you can turn on so even **`git add -f config.sh`** is **rejected** before a commit:
+
+```bash
+# Run once from the mac-util-tutorials repository root (parent of mac-startup-scripts/)
+git config core.hooksPath githooks
+```
+
+After a fresh **`git clone`**, run that line again so your machine uses **`githooks/pre-commit`**. Only **`config.example.sh`** belongs on GitHub.
+
+Copy the example and edit it:
 
 ```bash
 cp config.example.sh config.sh
@@ -254,41 +263,99 @@ To run **`mount_onedrive.sh`** automatically at login, see [Optional: run mounts
 
 ## Optional: run mounts at login (LaunchAgent)
 
-To run the mount script when you log in (after the external disk is connected), install a **LaunchAgent** that calls the script with your volume name.
+A **LaunchAgent** runs **`mount_onedrive.sh`** once when you **log in** (`RunAtLoad`). Use this only after **`config.sh`** works and a **manual** `./mount_onedrive.sh YourVolume` succeeds.
 
-1. Replace placeholders in the plist below: your macOS username, full path to `mount_onedrive.sh`, and your volume name.
-2. Save as `~/Library/LaunchAgents/com.example.rclone-onedrive.plist` (use a unique label; reverse-DNS style is typical).
-3. Load it:
+### Prerequisites
+
+- **`config.sh`** exists next to **`mount_onedrive.sh`** (see [§4](#4-create-your-configsh)).
+- **`rclone`** works in Terminal (Homebrew install). LaunchAgents get a **minimal `PATH`**, so the template sets **`PATH`** to include **`/opt/homebrew/bin`** and **`/usr/local/bin`**.
+- The external disk is usually **plugged in before or at login** if you expect an automatic mount. If the volume is **missing**, the script exits and you can run **`mount_onedrive.sh`** manually later.
+
+### 1. Copy the plist template into your account
+
+This repo includes:
+
+```text
+launchd/com.example.rclone-onedrive.plist.example
+```
+
+Copy it into **`~/Library/LaunchAgents/`** and rename it so the **basename matches your `Label`** (see step 2). Example:
 
 ```bash
-launchctl load ~/Library/LaunchAgents/com.example.rclone-onedrive.plist
+mkdir -p ~/Library/LaunchAgents
+cp /path/to/rclone-onedrive-setup/launchd/com.example.rclone-onedrive.plist.example \
+   ~/Library/LaunchAgents/com.yourname.rclone-onedrive.plist
 ```
 
-Example plist (edit all `CHANGE_ME` values):
+Use a **reverse-DNS–style** name you own, for example **`com.yourname.rclone-onedrive`**, so it does not collide with other jobs.
 
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>Label</key>
-    <string>com.example.rclone-onedrive</string>
-    <key>ProgramArguments</key>
-    <array>
-        <string>/CHANGE_ME/full/path/to/mount_onedrive.sh</string>
-        <string>CHANGE_ME_VolumeName</string>
-    </array>
-    <key>RunAtLoad</key>
-    <true/>
-    <key>StandardOutPath</key>
-    <string>/tmp/rclone-onedrive-mount.log</string>
-    <key>StandardErrorPath</key>
-    <string>/tmp/rclone-onedrive-mount.err</string>
-</dict>
-</plist>
+### 2. Edit the plist
+
+Open the new file in a text editor and set:
+
+| Key / field | What to put |
+|-------------|-------------|
+| **`Label`** | Same identifier you used in the filename, e.g. `com.yourname.rclone-onedrive`. |
+| **`ProgramArguments`** | **`/bin/bash`**, then the **absolute path** to **`mount_onedrive.sh`**, then your **volume name** (same as for manual mount). Example: `/Users/you/projects/rclone-onedrive-setup/mount_onedrive.sh`, `MyPassport`. |
+| **`EnvironmentVariables` → `PATH`** | Leave as-is unless `which rclone` is outside `/opt/homebrew/bin` and `/usr/local/bin`; if needed, prepend that directory. |
+
+The template invokes **`/bin/bash …/mount_onedrive.sh …`** so **`rclone`** is found via **`PATH`** and you do not depend on the file mode bit for **launchd**.
+
+Validate XML (optional):
+
+```bash
+plutil -lint ~/Library/LaunchAgents/com.yourname.rclone-onedrive.plist
 ```
 
-**Note:** If the external disk is not connected at login, the script exits with an error until the disk is present; you can run `./mount_onedrive.sh` manually when you plug it in.
+### 3. Load the agent (run at startup / login)
+
+**macOS 13 Ventura and later** (typical for new installs):
+
+```bash
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.yourname.rclone-onedrive.plist
+```
+
+**Older macOS** (if `bootstrap` is not available):
+
+```bash
+launchctl load ~/Library/LaunchAgents/com.yourname.rclone-onedrive.plist
+```
+
+Log out and back in—or reboot—to confirm mounts appear after login. **Stdout/stderr** go to **`/tmp/rclone-onedrive-mount.log`** and **`.err`** unless you changed those keys.
+
+Check that **launchd** picked it up:
+
+```bash
+launchctl list | grep -i rclone
+```
+
+To **test the job once** without logging out (after a successful `bootstrap` / `load`), replace `YOUR_LABEL` with your **`Label`** string:
+
+```bash
+launchctl kickstart -k gui/$(id -u)/YOUR_LABEL
+```
+
+### 4. Uninstall or temporarily disable
+
+**Ventura and later:**
+
+```bash
+launchctl bootout gui/$(id -u) ~/Library/LaunchAgents/com.yourname.rclone-onedrive.plist
+```
+
+**Older macOS:**
+
+```bash
+launchctl unload ~/Library/LaunchAgents/com.yourname.rclone-onedrive.plist
+```
+
+Then remove or rename the plist file if you no longer want it.
+
+### Caveats
+
+- **Login timing:** If the USB disk enumerates **after** the agent runs, the mount may fail once; read **`/tmp/rclone-onedrive-mount.err`** and run **`./mount_onedrive.sh`** manually when the drive appears.
+- **This does not replace `unmount_onedrive.sh`:** Ejecting the drive safely is unchanged ([§6](#6-unmount-and-eject-safely)).
+- **Secrets:** **`config.sh`** is not in git; keep **`LaunchAgents`** permissions sensible (`chmod 600` on the plist if you ever put tokens inside it—normally you should not; tokens stay in **`~/.config/rclone/`**).
 
 ## Troubleshooting
 
@@ -301,6 +368,7 @@ Example plist (edit all `CHANGE_ME` values):
 | I/O or “stuck” mount after unplugging | Follow [§6](#6-unmount-and-eject-safely) next time. In a bad state: `umount` the paths under `.../OneDrive/` or stop the matching `rclone` processes, then try again. |
 | OneDrive auth expired | `rclone config reconnect onedrive:` (adjust remote name if needed). |
 | macFUSE / security prompts | Re-check **Privacy & Security** and macFUSE documentation for your macOS version. |
+| **LaunchAgent** did not mount at login | Read **`/tmp/rclone-onedrive-mount.err`** and **`.log`**. Confirm the volume was present, **`config.sh`** exists, **`ProgramArguments`** paths are correct, and **`PATH`** in the plist includes **`which rclone`**. Run **`mount_onedrive.sh`** manually once the disk is connected. See [LaunchAgent](#optional-run-mounts-at-login-launchagent). |
 
 ## Why exFAT for the external drive (and APFS pain points in this setup)
 
