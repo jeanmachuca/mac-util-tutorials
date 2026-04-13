@@ -475,4 +475,4 @@ If your drive is **Mac-only**, **not** shared with other OSes, and **not** bound
 
 ## License
 
-Add a `LICENSE` file if you publish this repository (for example MIT), so others know how they may use it.
+The materials in this directory are released under the **MIT License**. See [LICENSE.txt](LICENSE.txt).
