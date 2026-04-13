@@ -85,6 +85,8 @@ Alternatively (Linux, macOS, BSD), the upstream one-liner:
 sudo -v ; curl https://rclone.org/install.sh | sudo bash
 ```
 
+That command downloads and runs **rclone’s own** installer script (also named `install.sh`). It writes the **`rclone`** binary and supporting files under **`/usr/local`** (or similar system locations), so it **must be run with `sudo`** — you will be prompted for your password. This is **not** the same script as **this repo’s** `./install.sh` under [Optional: install.sh](#optional-installsh-application-support-and-login-mount), which installs only under your **home** folder and normally **does not** need `sudo` for the default destination.
+
 Confirm:
 
 ```bash
@@ -364,6 +366,8 @@ To run **`mount_onedrive.sh`** automatically at login, use **`install.sh`** ([ne
 ```
 
 Use this **only after** [§4](#4-create-your-configsh) is correct and a **manual** mount works ([§5](#5-mount)).
+
+**`sudo`:** For the **default** install location (`~/Library/…`), **this** `./install.sh` runs as **your user** and **does not require `sudo`**. Do not confuse it with **rclone’s** official installer in [§ rclone](#rclone) (`curl https://rclone.org/install.sh | sudo bash`), which **does** require **`sudo`** because it installs the **`rclone`** program into system directories. If you pass **`--dest`** to point at a directory you cannot write without elevated rights, you would need to run with **`sudo`** (unusual).
 
 ### What it does
 
