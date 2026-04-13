@@ -154,15 +154,103 @@ Mounted paths will be:
 /Volumes/<DriveName>/OneDrive/<LOCAL_NAMES entries>
 ```
 
+### Finder sidebar favorites (drag to the sidebar)
+
+You can **drag a mounted folder** (for example `.../OneDrive/Documents`) into the **Finder sidebar** under **Favorites**. That creates a **shortcut** to the path—usually a **bookmark**—not a second copy of your data and **not** a change to how **rclone** or **FUSE** work.
+
+- **Mounting still comes from `mount_onedrive.sh`.** The sidebar entry does **not** keep the cloud mount alive by itself.
+- **When the disk is ejected or mounts are down**, the favorite may **gray out**, break, or open nothing useful until you plug in, run **`mount_onedrive.sh`** again, and the **same path** exists. If the volume ever appears under a **different name** in `/Volumes/`, an old favorite still points at the **old path**—update or recreate it.
+- **No extra sync layer:** it is convenience only; the same **safe eject** rules in [§6](#6-unmount-and-eject-safely) apply.
+- **Easier to leave files open:** a sidebar shortcut makes it quicker to jump back into those folders—before eject, still **quit apps** and **close documents** that use the mount (including anything opened via that favorite).
+
 ## 6. Unmount and eject safely
 
-Before unplugging the drive, stop the mounts and eject:
+`rclone mount` uses **FUSE** (via macFUSE). While mounts are active, the kernel and the `rclone` processes **hold open** paths under your external volume. Unplugging or **forcing** an eject in that state is how you get **I/O errors**, **partial writes**, **ghost `rclone` processes**, and **local** corruption or confusion—even when **OneDrive in the cloud** is still fine.
 
-```bash
-./unmount_onedrive.sh MyPassport
-```
+**Do not treat this like a normal USB stick.** Always tear down **rclone** and **FUSE** first, then eject.
 
-This unmounts subfolders under `.../OneDrive/`, stops matching `rclone mount` processes for that drive, then runs `diskutil eject`.
+### Recommended workflow (checklist)
+
+1. **Quit or close files** that are using anything under `/Volumes/<YourDrive>/OneDrive/` (editors, media apps, terminals with `cd` into those paths, and files opened from a **Finder sidebar** favorite that points there).
+2. Run **`unmount_onedrive.sh`** with your volume name (same name you used for `mount_onedrive.sh`):
+
+   ```bash
+   ./unmount_onedrive.sh MyPassport
+   ```
+
+3. Wait until the script finishes. On success it has already run **`diskutil eject`**—you do **not** need a separate Finder eject, and you can **unplug** once you see the success message.
+4. If the script reports **eject failed**, do **not** yank the cable. See [Troubleshooting](#troubleshooting) and fix stuck mounts before trying again.
+
+### What `unmount_onedrive.sh` does
+
+In order: **`umount`** on each direct subfolder under `.../OneDrive/` (your configured mount points), a short wait, **`pkill`** only for `rclone mount` processes whose command line references **`/Volumes/<YourDrive>/OneDrive`** (other `rclone` jobs on the Mac are left alone), another wait, a second **`umount`** pass, then **`diskutil eject /Volumes/<YourDrive>`**.
+
+### Finder eject: what to avoid
+
+- **Do not rely on Finder’s eject icon first** while `rclone` is still running. Finder may say the disk is **in use**—that is expected. The fix is to **run `unmount_onedrive.sh`**, not to fight Finder.
+- **Do not click “Force Eject”** to bypass the warning while cloud mounts are still active. That path **forces** FUSE teardown and is exactly the class of abrupt disconnect that risks **corrupted partial writes** and **unhappy apps**.
+- After **`unmount_onedrive.sh`** succeeds, the volume should already be **ejected**. If it still appears in Finder, run the script again or check Activity Monitor for stray **`rclone`** before doing anything drastic.
+
+### What not to do (quick reference)
+
+| Avoid | Why |
+|--------|-----|
+| Unplugging the drive while mounts are up | Same as pulling a disk during active I/O; FUSE and apps can leave **partial** or **inconsistent** local state. |
+| **Force Eject** in Finder while `rclone mount` is running | Forces disconnect; high risk of **I/O errors** and **local** damage to in-flight work. |
+| Putting the Mac to **sleep** mid–large copy **to or from** the mount | Wake/suspend timing can interrupt transfers; verify copies and prefer finishing work before sleep. |
+| Assuming “cloud still has it” means **local** cache is safe | The **remote** copy may be fine; **local** VFS cache and open handles can still be torn down badly if you disconnect wrong. |
+
+## macOS Energy settings and your mounts (optional)
+
+Large **video/audio** workflows and **`rclone mount`** both care about **sleep**, **idle power**, and whether **external storage** stays responsive. None of this replaces **`unmount_onedrive.sh`** before unplugging; it only reduces **surprise sleep** and **disk power management** getting in the way of long jobs.
+
+**System Settings** location varies by macOS version and hardware (for example **Energy**, **Battery**, or **Lock Screen**). Not every Mac shows every toggle below.
+
+Example configuration (your labels may differ slightly):
+
+![Example: macOS Energy settings](docs/macos-energy-settings-example.png)
+
+### What each option tends to mean for this setup
+
+| Setting | If **on** | If **off** | Relevance to `rclone` + external drive |
+|--------|-----------|------------|----------------------------------------|
+| **Prevent automatic sleeping when the display is off** | The Mac is **less likely to enter full system sleep** when only the display sleeps. | The system may **sleep sooner** while you are away from the desk. | **On** reduces the chance that a **long copy or transcode to/from the mount** is interrupted because the whole Mac went to sleep. **Tradeoff:** higher energy use when the display is off. |
+| **Enable Power Nap** | During sleep, the Mac can **wake briefly** for mail, calendar, and some **iCloud** updates. | No those short wake cycles for that background work. | Usually **orthogonal** to rclone mounts; occasional brief wakes generally do **not** replace normal sleep behavior for heavy I/O. Some people prefer it **off** when chasing the simplest possible sleep profile—personal preference. |
+| **Put hard disks to sleep when possible** | macOS may **idle or spin down** attached disks when it thinks they are unused. | Disks are **kept ready** more of the time (especially relevant for **spinning** external HDDs). | **Off** is a common choice when an **external volume holds your FUSE mounts** and you want to avoid **idle spin-down** coinciding with **laggy first access**, timeouts, or “disk woke up” surprises during long sessions. **SSDs / NVMe enclosures** are less affected by “spin down” than HDDs, but **USB bridges** and power management still vary—this toggle is worth trying if you see **idle-related hiccups**. **Tradeoff:** slightly higher power use (and HDD noise) on some setups. |
+| **Wake for network access** | The Mac can **wake from sleep** for incoming network requests (for example **Screen Sharing**, **File Sharing**). | It stays asleep until you use it locally (unless something else wakes it). | Matters if other devices **wake this Mac** and expect **shared folders**—possibly including paths on your **external** volume. If nothing in your workflow needs **wake-on-LAN–style** behavior, either state is usually fine. |
+| **Start up automatically after a power failure** | After utility power returns, the Mac **turns itself on**. | The Mac **stays off** until you press power. | After any boot, **`rclone mount` is gone** until you run **`mount_onedrive.sh`** again ([§ After a Mac restart](#after-a-mac-restart)). **Auto-start** after an outage can mean the machine comes up **before** peripherals or external disks finish their own power-on sequence—plan to **verify the drive is mounted in Finder** and **remount** as needed. |
+
+### Practical takeaway
+
+- For **overnight or unattended** work touching **`/Volumes/.../OneDrive/...`**, favor settings that **avoid full system sleep** during that window (often **“Prevent automatic sleeping when the display is off” = on** for desktops on AC power) and consider **“Put hard disks to sleep when possible” = off** if you use **HDDs** or see **idle disk** issues.
+- For **laptops on battery**, the same toggles **cost battery life**—use them when plugged in or only while running critical transfers.
+
+## After a Mac restart
+
+This section also applies after a **full shutdown** or **power off**. A **restart is not the same as sleep:** sleep usually keeps your session and running apps (including **`rclone mount`** if you left it up). A **full restart or shutdown** tears down all user processes.
+
+### What is gone after boot
+
+- Every **`rclone mount`** process started earlier is **stopped**. macFUSE **FUSE mounts** under `/Volumes/<YourDrive>/OneDrive/...` are **no longer active** as cloud-backed mounts.
+- **Finder sidebar favorites** and any open windows that pointed at those paths will be **broken or empty** until you **mount again** (see below).
+- Your **OneDrive content in the cloud** is unchanged. **`rclone`** remote configuration and tokens normally remain in **`~/.config/rclone/`** (unless you removed them).
+
+### What you do next
+
+1. **Connect the external drive** (if it was unplugged).
+2. Run **`mount_onedrive.sh`** again with the correct volume name:
+
+   ```bash
+   ./mount_onedrive.sh MyPassport
+   ```
+
+3. Your **`config.sh`** and scripts on disk are still there; you are only **restarting the mounts**.
+
+If the Mac **restarted while the drive was still connected**, macOS typically **unmounts volumes** during shutdown. You still need to run **`mount_onedrive.sh`** after login—nothing in this repo **auto-mounts** unless you add a **LaunchAgent** (next section). If you **had not** run **`unmount_onedrive.sh`** before a forced restart or crash, treat it like any abrupt disconnect: check for **stuck `rclone`** (unlikely after a clean boot), then remount; any **in-flight local cache** may have been cut off, while **remote** files on OneDrive are usually fine.
+
+### Optional automation
+
+To run **`mount_onedrive.sh`** automatically at login, see [Optional: run mounts at login (LaunchAgent)](#optional-run-mounts-at-login-launchagent). The disk must be **plugged in** (or the script will exit with “drive not found”); check the log paths in the plist if it does not mount on first try.
 
 ## Optional: run mounts at login (LaunchAgent)
 
@@ -206,8 +294,11 @@ Example plist (edit all `CHANGE_ME` values):
 
 | Issue | What to try |
 |--------|-------------|
+| Finder says the disk **can’t be ejected** / **in use** | Run **`unmount_onedrive.sh`** first ([§6](#6-unmount-and-eject-safely)). Do **not** use **Force Eject** while `rclone` is still mounting that drive. |
+| **Sidebar favorite** to a mount is gray or “can’t be opened” | Expected when the drive is **ejected** or **`mount_onedrive.sh`** has not been run. Remount with the script; if the **volume name** changed, remove the old favorite and drag the folder again. |
+| After **restart / shutdown**, cloud folders are “gone” in Finder | Normal: **`rclone mount` does not survive reboot.** Plug in the drive and run **`mount_onedrive.sh`** again ([§ After a Mac restart](#after-a-mac-restart)). Use a **LaunchAgent** if you want login automation. |
 | Mount fails: directory not empty | The scripts use `--allow-non-empty`. If it still fails, remove stray files in the mount folder (except do not delete data you care about). |
-| I/O or “stuck” mount after unplugging | Always run `unmount_onedrive.sh` before disconnecting. In a bad state: `umount` the paths under `.../OneDrive/` or stop the matching `rclone` processes, then try again. |
+| I/O or “stuck” mount after unplugging | Follow [§6](#6-unmount-and-eject-safely) next time. In a bad state: `umount` the paths under `.../OneDrive/` or stop the matching `rclone` processes, then try again. |
 | OneDrive auth expired | `rclone config reconnect onedrive:` (adjust remote name if needed). |
 | macFUSE / security prompts | Re-check **Privacy & Security** and macFUSE documentation for your macOS version. |
 
