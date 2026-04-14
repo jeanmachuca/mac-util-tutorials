@@ -7,6 +7,7 @@
 #   ./install.sh --dest PATH    # override install directory (default: Application Support path below)
 #   ./install.sh --label ID     # LaunchAgent label (default: com.rclone-onedrive.mount)
 #   ./install.sh MyVolume       # override volume name for this run (else uses EXTERNAL_VOLUME_NAME from config.sh)
+#   ./install.sh --skip-keychain   # skip interactive Keychain step (see RCLONE_CONFIG_KEYCHAIN_SERVICE in config.sh)
 
 set -euo pipefail
 
@@ -18,12 +19,13 @@ readonly ALIAS_HOOK_END='# <<< rclone-onedrive-setup aliases <<<'
 SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DRY_RUN=0
 UNINSTALL=0
+SKIP_KEYCHAIN=0
 DEST="$DEFAULT_DEST"
 LABEL="$DEFAULT_LABEL"
 VOLUME_OVERRIDE=""
 
 usage() {
-	sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//'
+	sed -n '2,10p' "$0" | sed 's/^# \{0,1\}//'
 	exit 0
 }
 
@@ -31,6 +33,7 @@ while [ $# -gt 0 ]; do
 	case "$1" in
 	--dry-run) DRY_RUN=1 ;;
 	--uninstall) UNINSTALL=1 ;;
+	--skip-keychain) SKIP_KEYCHAIN=1 ;;
 	--dest)
 		shift
 		DEST="${1:?--dest requires a path}"
@@ -160,13 +163,13 @@ check_shell_alias_targets() {
 	local ctx="${2:-install directory}"
 	local name
 
-	for name in install.sh mount_onedrive.sh unmount_onedrive.sh; do
+	for name in install.sh mount_onedrive.sh unmount_onedrive.sh login.sh logout.sh; do
 		if [ ! -f "$d/$name" ]; then
 			log_fail "Shell alias target missing ($ctx): $d/$name"
 			return 1
 		fi
 	done
-	log_ok "Shell alias targets OK ($ctx): install.sh, mount_onedrive.sh, unmount_onedrive.sh"
+	log_ok "Shell alias targets OK ($ctx): install.sh, mount_onedrive.sh, unmount_onedrive.sh, login.sh, logout.sh"
 	return 0
 }
 
@@ -315,6 +318,94 @@ volume_present_warning() {
 	fi
 }
 
+read_keychain_service_from_config() {
+	local cfg="$1"
+	(
+		set +u
+		# shellcheck disable=1090
+		source "$cfg" 2>/dev/null || exit 1
+		printf '%s' "${RCLONE_CONFIG_KEYCHAIN_SERVICE:-}"
+	)
+}
+
+read_keychain_account_from_config() {
+	local cfg="$1"
+	(
+		set +u
+		# shellcheck disable=1090
+		source "$cfg" 2>/dev/null || exit 1
+		printf '%s' "${RCLONE_CONFIG_KEYCHAIN_ACCOUNT:-}"
+	)
+}
+
+# Store rclone config encryption master password in macOS Keychain (same lookup as mount_onedrive.sh).
+prompt_and_store_rclone_keychain_password() {
+	local cfg="$1"
+	local svc acct acct_use p1 p2
+
+	svc="$(read_keychain_service_from_config "$cfg")" || {
+		log_fail "Could not read $cfg for Keychain settings."
+		return 1
+	}
+	if [ -z "$svc" ]; then
+		log_ok "Keychain password step skipped (set RCLONE_CONFIG_KEYCHAIN_SERVICE in config.sh to enable)."
+		return 0
+	fi
+
+	if [ "$SKIP_KEYCHAIN" -eq 1 ]; then
+		log_warn "Keychain password step skipped (--skip-keychain). Add the password yourself; see README."
+		return 0
+	fi
+
+	if [ ! -t 0 ]; then
+		log_warn "Keychain: stdin is not a TTY — skipping interactive password. Run install in Terminal or use security add-generic-password manually."
+		return 0
+	fi
+
+	if ! command -v security >/dev/null 2>&1; then
+		log_fail "security(1) not found."
+		return 1
+	fi
+
+	acct="$(read_keychain_account_from_config "$cfg")"
+	acct_use="${acct:-$USER}"
+
+	echo ""
+	echo "Encrypted rclone.conf: store the master password in your login Keychain."
+	echo "  Service: $svc"
+	echo "  Account: $acct_use"
+	echo ""
+
+	read -r -s -p "Enter rclone config encryption password: " p1 || true
+	echo ""
+	read -r -s -p "Confirm password: " p2 || true
+	echo ""
+
+	if [ "$p1" != "$p2" ]; then
+		log_fail "Passwords do not match."
+		unset p1 p2
+		return 1
+	fi
+	if [ -z "$p1" ]; then
+		log_fail "Password is empty."
+		unset p1 p2
+		return 1
+	fi
+
+	if printf '%s' "$p1" | security add-generic-password -a "$acct_use" -s "$svc" -w 2>/dev/null; then
+		log_ok "Keychain: saved password for service '$svc' (new item)."
+	elif printf '%s' "$p1" | security add-generic-password -a "$acct_use" -s "$svc" -U -w 2>/dev/null; then
+		log_ok "Keychain: updated password for service '$svc'."
+	else
+		log_fail "security add-generic-password failed. Remove any conflicting item in Keychain Access or fix permissions."
+		unset p1 p2
+		return 1
+	fi
+
+	unset p1 p2
+	return 0
+}
+
 write_plist_xml() {
 	export INSTALL_PLIST_OUT="$1"
 	export INSTALL_PLIST_LABEL="$LABEL"
@@ -387,6 +478,18 @@ run_dry_run() {
 		volume_present_warning "$vol"
 	fi
 
+	local ksvc
+	ksvc="$(read_keychain_service_from_config "$SRC/config.sh" 2>/dev/null || true)"
+	if [ -n "$ksvc" ]; then
+		if [ "$SKIP_KEYCHAIN" -eq 1 ]; then
+			log_ok "Keychain: real install would skip the password prompt (--skip-keychain)."
+		else
+			echo "Keychain: real install would prompt for the rclone config encryption password and run security add-generic-password (service: $ksvc)."
+		fi
+	else
+		log_ok "Keychain: real install would not prompt (RCLONE_CONFIG_KEYCHAIN_SERVICE empty in config.sh)."
+	fi
+
 	local mount_script="${DEST}/mount_onedrive.sh"
 	echo ""
 	echo "Planned install directory: $DEST"
@@ -414,7 +517,7 @@ run_dry_run() {
 		echo "========== Dry-run summary (nothing was written) =========="
 		echo ""
 		echo "Symlinks in the source tree were checked above (dangling symlinks would have failed)."
-		echo "Shell alias targets (install.sh, mount_onedrive.sh, unmount_onedrive.sh) were checked in the source tree."
+		echo "Shell alias targets (install.sh, mount_onedrive.sh, unmount_onedrive.sh, login.sh, logout.sh) were checked in the source tree."
 		echo ""
 		echo "Would rsync from:"
 		echo "    $SRC/"
@@ -427,7 +530,17 @@ run_dry_run() {
 		echo "Would append shell aliases to:"
 		echo "    ${HOME}/.zshrc"
 		echo "    ${HOME}/.bash_profile"
-		echo "    (install_rclone_ondrive, mount_rclone_ondrive, unmount_rclone_onedrive, uninstall_rclone_onedrive)"
+		echo "    (install_rclone_ondrive, mount_rclone_ondrive, unmount_rclone_onedrive, login_rclone_ondrive, logout_rclone_onedrive, uninstall_rclone_onedrive)"
+		echo ""
+		if [ -n "${ksvc:-}" ]; then
+			if [ "$SKIP_KEYCHAIN" -eq 1 ]; then
+				echo "Keychain: skipped (--skip-keychain)."
+			else
+				echo "Would prompt for rclone encryption password → Keychain (service: $ksvc)."
+			fi
+		else
+			echo "Keychain: no prompt (set RCLONE_CONFIG_KEYCHAIN_SERVICE to enable)."
+		fi
 		echo ""
 		echo "Files that would be copied (same layout as after real install):"
 		find "$SRC" -type f \
@@ -487,6 +600,8 @@ install_shell_alias_hooks() {
 			echo "alias install_rclone_ondrive=$(shell_single_quote "${dest}/install.sh")"
 			echo "alias mount_rclone_ondrive=$(shell_single_quote "${dest}/mount_onedrive.sh")"
 			echo "alias unmount_rclone_onedrive=$(shell_single_quote "${dest}/unmount_onedrive.sh")"
+			echo "alias login_rclone_ondrive=$(shell_single_quote "${dest}/login.sh")"
+			echo "alias logout_rclone_onedrive=$(shell_single_quote "${dest}/logout.sh")"
 			echo "alias uninstall_rclone_onedrive=$(shell_single_quote "${dest}/install.sh --uninstall")"
 			echo "$ALIAS_HOOK_END"
 			echo ""
@@ -519,6 +634,8 @@ print_install_summary() {
 	echo "    install_rclone_ondrive    → ${dest}/install.sh"
 	echo "    mount_rclone_ondrive      → ${dest}/mount_onedrive.sh"
 	echo "    unmount_rclone_onedrive   → ${dest}/unmount_onedrive.sh"
+	echo "    login_rclone_ondrive      → ${dest}/login.sh"
+	echo "    logout_rclone_onedrive    → ${dest}/logout.sh"
 	echo "    uninstall_rclone_onedrive → ${dest}/install.sh --uninstall"
 	echo "    In this session run:  source ~/.zshrc   # or ~/.bash_profile"
 	echo ""
@@ -540,7 +657,13 @@ print_install_summary() {
 	echo ""
 	echo "Try a mount now (after source, or use full path):"
 	echo "    mount_rclone_ondrive $vol"
+	echo "    login_rclone_ondrive      # uses EXTERNAL_VOLUME_NAME from config.sh"
 	echo "    # or: $mount_script $vol"
+	echo ""
+	local ksvc_sum
+	if ksvc_sum="$(read_keychain_service_from_config "$dest/config.sh" 2>/dev/null)" && [ -n "$ksvc_sum" ]; then
+		echo "Keychain: mount_onedrive.sh will read the encryption password using service '$ksvc_sum' (see RCLONE_CONFIG_KEYCHAIN_* in config.sh)."
+	fi
 	echo ""
 	echo "====================================="
 }
@@ -590,7 +713,7 @@ do_install() {
 
 	check_symlinks_in_tree "$DEST" "install directory" || exit 1
 
-	chmod +x "$DEST/mount_onedrive.sh" "$DEST/unmount_onedrive.sh" "$DEST/install.sh" 2>/dev/null || true
+	chmod +x "$DEST/mount_onedrive.sh" "$DEST/unmount_onedrive.sh" "$DEST/login.sh" "$DEST/logout.sh" "$DEST/install.sh" "$DEST/setup_rclone_encryption_keychain.sh" 2>/dev/null || true
 
 	if [ ! -f "$DEST/config.sh" ]; then
 		if [ -f "$SRC/config.sh" ]; then
@@ -608,6 +731,8 @@ do_install() {
 		vol="$(read_volume_from_config "$DEST/config.sh")"
 		validate_volume "$vol" || exit 1
 	fi
+
+	prompt_and_store_rclone_keychain_password "$DEST/config.sh" || exit 1
 
 	local mount_script="${DEST}/mount_onedrive.sh"
 	mkdir -p "${HOME}/Library/LaunchAgents"

@@ -200,6 +200,56 @@ rclone config reconnect onedrive:
 
 Or **`e`** (edit remote) and refresh when rclone offers **“Already have a token - refresh?”** — see [rclone MFA / token refresh](https://rclone.org/onedrive/).
 
+### Encrypting `rclone.conf` and macOS Keychain (recommended)
+
+By default, rclone stores remotes and OAuth tokens in **`~/.config/rclone/rclone.conf`**. Anyone with full disk access to your user account (or a backup of your home folder) can read that file unless you add protection.
+
+1. **Turn on rclone’s config encryption** (a master password wraps the whole config file). You can do this **manually**:
+
+   ```bash
+   rclone config encryption set
+   ```
+
+   Follow the prompts, then confirm **`rclone lsd onedrive:`** still works after entering the password when asked.
+
+   **Or use the helper script** (recommended on macOS): **`setup_rclone_encryption_keychain.sh`** runs **`rclone config encryption set`** non-interactively via **`--password-command`**, then stores the same master password in **Keychain** (unless you pass **`--encryption-only`**). It detects whether your config is already encrypted (see `# Encrypted rclone configuration` at the top of the file) and can **rotate** the password if needed. You need at least one remote in **`rclone config`** first so **`rclone.conf`** exists.
+
+   ```bash
+   chmod +x setup_rclone_encryption_keychain.sh   # if needed
+   ./setup_rclone_encryption_keychain.sh
+   ```
+
+   **`--encryption-only`** skips Keychain (for Linux, or if you want to manage **`RCLONE_CONFIG_PASS`** yourself). **`--help`** shows usage.
+
+2. **Automation needs `RCLONE_CONFIG_PASS`** — After encryption, non-interactive use (this repo’s **`mount_onedrive.sh`**, **LaunchAgent**) must supply the same master password via the environment variable **`RCLONE_CONFIG_PASS`**. **Do not** put that password inside **`config.sh`** or any file you might copy or commit.
+
+3. **Store the master password in the macOS Keychain** and let **`mount_onedrive.sh`** load it at runtime:
+
+   If you already ran **`setup_rclone_encryption_keychain.sh`** (step 1), the password is in Keychain — ensure **`config.sh`** uses the same **`RCLONE_CONFIG_KEYCHAIN_SERVICE`** / **`RCLONE_CONFIG_KEYCHAIN_ACCOUNT`** you chose, then continue to [§4](#4-create-your-configsh).
+
+   Otherwise, pick a **service name** you will reuse (example: **`rclone-onedrive-config`**). In **`config.sh`** (from **`config.example.sh`**), set **`RCLONE_CONFIG_KEYCHAIN_SERVICE`** to that name first.
+
+   **Option A — during `install.sh` (recommended):** When you run [**`./install.sh`**](#optional-installsh-application-support-and-login-mount) and **`RCLONE_CONFIG_KEYCHAIN_SERVICE`** is non-empty, the installer **prompts twice** for the encryption password (nothing is echoed) and runs **`security add-generic-password`** for you (creates a new item or updates an existing one). Use **`./install.sh --skip-keychain`** if you prefer to add the Keychain item yourself.
+
+   **Option B — manual Terminal command:** On Apple’s **`security`** tool, put **`-w` last** with **no** password on the command line so Terminal **prompts** interactively (avoids putting the secret in shell history):
+
+   ```bash
+   security add-generic-password -a "$USER" -s "rclone-onedrive-config" -w
+   ```
+
+   If the item already exists, add **`-U`** before **`-w`** to update it, or delete the old item in **Keychain Access** first.
+
+   Ensure **`config.sh`** matches the Keychain item:
+
+   - **`RCLONE_CONFIG_KEYCHAIN_SERVICE="rclone-onedrive-config"`** — must match **`-s`** (Option A/B) or the service used by **`install.sh`**.
+   - Optionally **`RCLONE_CONFIG_KEYCHAIN_ACCOUNT="$USER"`** — only if you used **`-a`** when creating the item and need to disambiguate.
+
+   **`mount_onedrive.sh`** runs **after** sourcing **`config.sh`**. If **`RCLONE_CONFIG_PASS`** is **already set** in the environment, it is left unchanged (useful for testing). Otherwise, if **`RCLONE_CONFIG_KEYCHAIN_SERVICE`** is non-empty, the script exports **`RCLONE_CONFIG_PASS`** from Keychain before calling **`rclone mount`**.
+
+4. **`rclone obscure`** is *not* a substitute for config encryption — it only hides strings from casual viewing; use **encryption + Keychain** for real protection.
+
+5. **Login / LaunchAgent:** A **LaunchAgent** runs as **you** after login; the login keychain is normally unlocked, so Keychain lookup usually works for automated mounts. If **`security find-generic-password`** fails from Terminal, fix the Keychain item or labels before relying on login mounts.
+
 ## 3. Install these scripts
 
 Clone or copy this repository to a folder on your Mac, for example:
@@ -212,7 +262,7 @@ cd rclone-onedrive-setup
 Make the scripts executable:
 
 ```bash
-chmod +x mount_onedrive.sh unmount_onedrive.sh install.sh
+chmod +x mount_onedrive.sh unmount_onedrive.sh login.sh logout.sh install.sh setup_rclone_encryption_keychain.sh
 ```
 
 ## 4. Create your `config.sh`
@@ -235,10 +285,11 @@ cp config.example.sh config.sh
 Edit `config.sh` so that:
 
 - **`REMOTE_NAME`** matches the name you used in `rclone config`.
-- **`EXTERNAL_VOLUME_NAME`** is the **exact** name of your external disk in Finder / `/Volumes/` (for example `MyPassport`). Used by **`install.sh`** for the LaunchAgent; you still pass the same name to **`mount_onedrive.sh`** manually if you run it by hand.
+- **`EXTERNAL_VOLUME_NAME`** is the **exact** name of your external disk in Finder / `/Volumes/` (for example `MyPassport`). Used by **`install.sh`** for the LaunchAgent and by **`login.sh`** / **`logout.sh`** when you run them with **no** arguments (see [§5](#5-mount)).
 - **`REMOTE_PATHS`** lists folders **on OneDrive** (as returned by `rclone lsd`).
 - **`LOCAL_NAMES`** lists the folder names you want under `/Volumes/<YourDrive>/OneDrive/` on the external disk.
 - **`CACHE_MAX_SIZE`** sets a per-mount VFS cache limit (for example `50G`).
+- If you use **encrypted `rclone.conf`**, set **`RCLONE_CONFIG_KEYCHAIN_SERVICE`** (and optionally **`RCLONE_CONFIG_KEYCHAIN_ACCOUNT`**) as in [§2 — Encrypting `rclone.conf` and macOS Keychain](#encrypting-rcloneconf-and-macos-keychain-recommended). Never put the master password in **`config.sh`**.
 
 All **`REMOTE_PATHS` / `LOCAL_NAMES` / `CACHE_MAX_SIZE`** arrays must have the **same number** of entries. You can use one folder or many.
 
@@ -252,6 +303,8 @@ All **`REMOTE_PATHS` / `LOCAL_NAMES` / `CACHE_MAX_SIZE`** arrays must have the *
 ```
 
 Use the **exact** volume name as shown under `/Volumes/`.
+
+**Convenience wrappers:** **`./login.sh`** runs **`mount_onedrive.sh`** using **`EXTERNAL_VOLUME_NAME`** from **`config.sh`** when you omit the argument (or pass **`./login.sh MyPassport`** to override). **`./logout.sh`** does the same for **`unmount_onedrive.sh`** (safe unmount + eject). After **`install.sh`**, shell aliases **`login_rclone_ondrive`** and **`logout_rclone_onedrive`** point at these scripts.
 
 Mounted paths will be:
 
@@ -277,11 +330,13 @@ You can **drag a mounted folder** (for example `.../OneDrive/Documents`) into th
 ### Recommended workflow (checklist)
 
 1. **Quit or close files** that are using anything under `/Volumes/<YourDrive>/OneDrive/` (editors, media apps, terminals with `cd` into those paths, and files opened from a **Finder sidebar** favorite that points there).
-2. Run **`unmount_onedrive.sh`** with your volume name (same name you used for `mount_onedrive.sh`):
+2. Run **`unmount_onedrive.sh`** with your volume name (same name you used for `mount_onedrive.sh`), or **`./logout.sh`** if **`EXTERNAL_VOLUME_NAME`** is set in **`config.sh`**:
 
-   ```bash
-   ./unmount_onedrive.sh MyPassport
-   ```
+```bash
+./unmount_onedrive.sh MyPassport
+# or, if EXTERNAL_VOLUME_NAME matches:
+./logout.sh
+```
 
 3. Wait until the script finishes. On success it has already run **`diskutil eject`**—you do **not** need a separate Finder eject, and you can **unplug** once you see the success message.
 4. If the script reports **eject failed**, do **not** yank the cable. See [Troubleshooting](#troubleshooting) and fix stuck mounts before trying again.
@@ -372,15 +427,16 @@ Use this **only after** [§4](#4-create-your-configsh) is correct and a **manual
 ### What it does
 
 1. **`rsync`** from the directory containing **`install.sh`** into **`~/Library/Application Support/rclone-onedrive-setup/`** (excludes `.git`, `.DS_Store`, `.cursor`, `*.swp`).
-2. **Symlink integrity:** checks every **filesystem symlink** under the **source tree** before copying, and again under the **install directory** after **`rsync`**. **Dangling** symlinks (broken targets) produce **[FAIL]** (same **`.git`** / **`.cursor`** exclusions as **`rsync`**). This is separate from **shell aliases** (step 6): aliases are not symlinks, but the installer also verifies that **`install.sh`**, **`mount_onedrive.sh`**, and **`unmount_onedrive.sh`** exist before appending aliases to **`~/.zshrc`** / **`~/.bash_profile`**.
+2. **Symlink integrity:** checks every **filesystem symlink** under the **source tree** before copying, and again under the **install directory** after **`rsync`**. **Dangling** symlinks (broken targets) produce **[FAIL]** (same **`.git`** / **`.cursor`** exclusions as **`rsync`**). This is separate from **shell aliases** (step 7): aliases are not symlinks, but the installer also verifies that **`install.sh`**, **`mount_onedrive.sh`**, **`unmount_onedrive.sh`**, **`login.sh`**, and **`logout.sh`** exist before appending aliases to **`~/.zshrc`** / **`~/.bash_profile`**.
 3. Ensures **`config.sh`** exists in the install dir (copies from your clone’s **`config.sh`**, or from **`config.example.sh`** if needed—then **edit** **`EXTERNAL_VOLUME_NAME`** and paths there).
-4. Writes **`~/Library/LaunchAgents/com.rclone-onedrive.mount.plist`** (override with **`--label`**) pointing at **`/bin/bash …/mount_onedrive.sh <volume>`**, with **`PATH`** including Homebrew.
-5. Runs **`launchctl bootstrap gui/$(id -u) …`** (or **`launchctl load`** on older macOS).
-6. Appends **shell aliases** to **`~/.zshrc`** and **`~/.bash_profile`** (marked block, replaced on reinstall): **`install_rclone_ondrive`**, **`mount_rclone_ondrive`**, **`unmount_rclone_onedrive`**, **`uninstall_rclone_onedrive`** — each points at the scripts under the install directory so generic names are not added to **`PATH`**. Run **`source ~/.zshrc`** (or open a new tab) after installing.
+4. **Keychain (optional):** If **`RCLONE_CONFIG_KEYCHAIN_SERVICE`** is set in **`config.sh`**, prompts twice for the **rclone config encryption** master password and runs **`security add-generic-password`** so **`mount_onedrive.sh`** can read **`RCLONE_CONFIG_PASS`** at runtime. Skipped if the service name is empty, if **`--skip-keychain`** is passed, or if **stdin is not a TTY** (e.g. piped install — add the Keychain item manually in that case). See [§2 — Keychain](#encrypting-rcloneconf-and-macos-keychain-recommended).
+5. Writes **`~/Library/LaunchAgents/com.rclone-onedrive.mount.plist`** (override with **`--label`**) pointing at **`/bin/bash …/mount_onedrive.sh <volume>`**, with **`PATH`** including Homebrew.
+6. Runs **`launchctl bootstrap gui/$(id -u) …`** (or **`launchctl load`** on older macOS).
+7. Appends **shell aliases** to **`~/.zshrc`** and **`~/.bash_profile`** (marked block, replaced on reinstall): **`install_rclone_ondrive`**, **`mount_rclone_ondrive`**, **`unmount_rclone_onedrive`**, **`login_rclone_ondrive`**, **`logout_rclone_onedrive`**, **`uninstall_rclone_onedrive`** — each points at the scripts under the install directory so generic names are not added to **`PATH`**. Run **`source ~/.zshrc`** (or open a new tab) after installing.
 
 ### Dry-run (recommended first)
 
-Checks **macOS**, **`rclone`**, **`rsync`**, **`plutil`**, required source files, **symlink integrity** in the source tree (no dangling symlinks), **shell alias targets** (**`install.sh`**, **`mount_onedrive.sh`**, **`unmount_onedrive.sh`** present in the source tree), and that **`config.sh`** is complete: **`REMOTE_NAME`**, **`REMOTE_PATHS` / `LOCAL_NAMES` / `CACHE_MAX_SIZE`** (same length, no empty entries), and **`EXTERNAL_VOLUME_NAME`** unless you pass a **volume name** on the command line (same rules as **`mount_onedrive.sh`**). Then checks install path writability and validates a **temporary** plist with **`plutil -lint`**. **No files are copied**, **launchd** is not changed, and **shell rc files** are not modified.
+Checks **macOS**, **`rclone`**, **`rsync`**, **`plutil`**, required source files, **symlink integrity** in the source tree (no dangling symlinks), **shell alias targets** (**`install.sh`**, **`mount_onedrive.sh`**, **`unmount_onedrive.sh`**, **`login.sh`**, **`logout.sh`** present in the source tree), and that **`config.sh`** is complete: **`REMOTE_NAME`**, **`REMOTE_PATHS` / `LOCAL_NAMES` / `CACHE_MAX_SIZE`** (same length, no empty entries), and **`EXTERNAL_VOLUME_NAME`** unless you pass a **volume name** on the command line (same rules as **`mount_onedrive.sh`**). It also reports what would happen for the **Keychain** step if **`RCLONE_CONFIG_KEYCHAIN_SERVICE`** is set (or **`--skip-keychain`**). Then checks install path writability and validates a **temporary** plist with **`plutil -lint`**. **No files are copied**, **launchd** is not changed, **Keychain** is not modified, and **shell rc files** are not modified.
 
 If **`rclone`** is missing, the script exits with **[FAIL]** and prints install hints: **`brew install rclone`** (macOS) and the official installer for Linux/macOS/BSD:
 
@@ -407,6 +463,7 @@ Optional flags:
 |------|---------|
 | **`--dest DIR`** | Install directory instead of the default under Application Support. |
 | **`--label com.you.id`** | LaunchAgent label / plist name (default **`com.rclone-onedrive.mount`**). |
+| **`--skip-keychain`** | Skip the interactive **Keychain** password step (when **`RCLONE_CONFIG_KEYCHAIN_SERVICE`** is set — add the item yourself or use **`security add-generic-password`**). |
 | *(positional)* **`MyVolume`** | Volume name for plist if you do not set **`EXTERNAL_VOLUME_NAME`** in **`config.sh`**. |
 
 ### Uninstall
@@ -428,6 +485,7 @@ Removes the LaunchAgent plist, unloads it, strips the **alias** block (and any l
 - **Login, not firmware boot:** the job runs when **your user** logs in.
 - If the USB disk appears **after** the job runs, the mount may fail once; plug in earlier or run **`mount_onedrive.sh`** manually from the install dir.
 - Re-run **`./install.sh`** after editing scripts in the clone to **refresh** the Application Support copy.
+- **Keychain prompt:** If **`RCLONE_CONFIG_KEYCHAIN_SERVICE`** is set, the installer expects a **TTY** for the password prompts. If you run **`install.sh`** from a non-interactive context, use **`--skip-keychain`** and add the Keychain item manually ([§2](#encrypting-rcloneconf-and-macos-keychain-recommended)).
 
 ## Optional: Manual LaunchAgent plist (advanced)
 
@@ -523,7 +581,7 @@ Then remove or rename the plist file if you no longer want it.
 
 - **Login timing:** If the USB disk enumerates **after** the agent runs, the mount may fail once; read **`/tmp/rclone-onedrive-mount.err`** and run **`./mount_onedrive.sh`** manually when the drive appears.
 - **This does not replace `unmount_onedrive.sh`:** Ejecting the drive safely is unchanged ([§6](#6-unmount-and-eject-safely)).
-- **Secrets:** **`config.sh`** is not in git; keep **`LaunchAgents`** permissions sensible (`chmod 600` on the plist if you ever put tokens inside it—normally you should not; tokens stay in **`~/.config/rclone/`**).
+- **Secrets:** **`config.sh`** is not in git; keep **`LaunchAgents`** permissions sensible (`chmod 600` on the plist if you ever put secrets inside it—normally you should not). Prefer **encrypting `rclone.conf`** and **`RCLONE_CONFIG_KEYCHAIN_SERVICE`** in **`config.sh`** instead of putting passwords or tokens in the plist ([§2 — Keychain](#encrypting-rcloneconf-and-macos-keychain-recommended)).
 
 ## Troubleshooting
 
@@ -539,6 +597,8 @@ Then remove or rename the plist file if you no longer want it.
 | **“rclone” Not Opened** / malware warning when opening rclone | Quarantine on a downloaded binary — see [macOS: rclone Gatekeeper warning (quarantine)](#macos-rclone-gatekeeper-warning-quarantine). Prefer **`brew install rclone`**, or **`xattr -d com.apple.quarantine "$(command -v rclone)"`**, or **Privacy & Security → Open Anyway** after attempting once in Terminal. |
 | **`install.sh --dry-run` fails** | Fix reported **[FAIL]** lines (often missing **`EXTERNAL_VOLUME_NAME`** in **`config.sh`**, **`rclone`**, or path permissions). |
 | **LaunchAgent** did not mount at login | Read **`/tmp/rclone-onedrive-mount.err`** and **`.log`**. Confirm the volume was present, **`config.sh`** in the **install dir** has **`EXTERNAL_VOLUME_NAME`**, and **`PATH`** in the plist includes **`which rclone`**. Run **`mount_onedrive.sh`** manually from **`~/Library/Application Support/rclone-onedrive-setup/`** once the disk is connected. See [install.sh](#optional-installsh-application-support-and-login-mount) or [manual plist](#optional-manual-launchagent-plist-advanced). |
+| **`mount_onedrive.sh`**: “Could not read rclone config password from Keychain” | **`RCLONE_CONFIG_KEYCHAIN_SERVICE`** must match **`security add-generic-password -s`**. If you used **`-a`**, set **`RCLONE_CONFIG_KEYCHAIN_ACCOUNT`** to the same account. Test: **`security find-generic-password -s "your-service" -w`** in Terminal. See [§2 — Keychain](#encrypting-rcloneconf-and-macos-keychain-recommended). |
+| rclone asks for a **config password** when you expected automation | You enabled **`rclone config encryption`** but **`RCLONE_CONFIG_PASS`** is not set — configure Keychain + **`RCLONE_CONFIG_KEYCHAIN_SERVICE`** in **`config.sh`**, or export **`RCLONE_CONFIG_PASS`** only for that shell session. |
 
 ## Why exFAT for the external drive (and APFS pain points in this setup)
 

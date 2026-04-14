@@ -26,3 +26,16 @@ CACHE_MAX_SIZE=(
   "50G"
   "10G"
 )
+
+# --- Optional: encrypted rclone.conf + macOS Keychain ---
+# If you run: rclone config encryption set
+# then rclone needs RCLONE_CONFIG_PASS. Do not put the password in this file.
+# Easiest: ./setup_rclone_encryption_keychain.sh  (encrypts + Keychain)
+# 1) Set the service name here (must match Keychain). Leave empty to skip Keychain.
+# 2) Add the password: run setup_rclone_encryption_keychain.sh, ./install.sh (it prompts), or manually:
+#    security add-generic-password -a "$USER" -s "rclone-onedrive-config" -w
+#    (put -w last; Terminal prompts — do not paste the password into the command line)
+#    Or: ./install.sh --skip-keychain  then add the item yourself.
+RCLONE_CONFIG_KEYCHAIN_SERVICE=""
+# Optional: Keychain "account" field; must match -a if you used it when adding the item.
+# RCLONE_CONFIG_KEYCHAIN_ACCOUNT=""
