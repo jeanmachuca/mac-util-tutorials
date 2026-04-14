@@ -201,7 +201,7 @@ chmod +x check_rclone_config.sh   # if needed
 ./check_rclone_config.sh
 ```
 
-After **`install.sh`**, the shell function **`check_rclone_ondrive`** runs the installed copy.
+After **`install.sh`**, the shell function **`check_rclone_onedrive`** runs the installed copy.
 
 ### Reset `rclone.conf` (start over locally)
 
@@ -212,7 +212,7 @@ chmod +x reset_rclone_config.sh   # if needed
 ./reset_rclone_config.sh
 ```
 
-After **`install.sh`**, the shell function **`reset_rclone_ondrive`** runs the installed copy.
+After **`install.sh`**, the shell function **`reset_rclone_onedrive`** runs the installed copy.
 
 ### Later: token expired or re-auth
 
@@ -329,13 +329,15 @@ By default this uses **`rclone mount … --daemon`** (the script returns after s
 
 Use the **exact** volume name as shown under `/Volumes/`.
 
-**Convenience wrappers:** **`./login.sh`** runs **`mount_onedrive.sh`** using **`EXTERNAL_VOLUME_NAME`** from **`config.sh`** when you omit the argument (or pass **`./login.sh MyPassport`** to override). **`./logout.sh`** does the same for **`unmount_onedrive.sh`** (safe unmount + eject). After **`install.sh`**, shell functions **`login_rclone_ondrive`**, **`logout_rclone_onedrive`**, **`check_rclone_ondrive`**, and **`reset_rclone_ondrive`** are available.
+**Convenience wrappers:** **`./login.sh`** runs **`mount_onedrive.sh`** using **`EXTERNAL_VOLUME_NAME`** from **`config.sh`** when you omit the argument (or pass **`./login.sh MyPassport`** to override). **`./logout.sh`** does the same for **`unmount_onedrive.sh`** (safe unmount + eject). After **`install.sh`**, shell functions **`login_rclone_onedrive`**, **`logout_rclone_onedrive`**, **`check_rclone_onedrive`**, and **`reset_rclone_onedrive`** are available (along with install / mount / unmount helpers — run **`rclone_onedrive_help`** after **`source ~/.zshrc`** to print the full list).
 
 Mounted paths will be:
 
 ```text
 /Volumes/<DriveName>/OneDrive/<LOCAL_NAMES entries>
 ```
+
+**Running `mount_onedrive.sh` more than once:** each run **`umount`s** each configured target (if mounted), then starts **`rclone`** again — so it behaves like **remount**, not stacking mounts. **`--no-daemon`** (LaunchAgent) vs default **`--daemon`** and overlapping runs are explained in **[docs/running-mount-onedrive-twice.md](docs/running-mount-onedrive-twice.md)**.
 
 ### Finder sidebar favorites (drag to the sidebar)
 
@@ -457,7 +459,7 @@ Use this **only after** [§4](#4-create-your-configsh) is correct and a **manual
 4. **Keychain (optional):** If **`RCLONE_CONFIG_KEYCHAIN_SERVICE`** is set in **`config.sh`**, prompts twice for the **rclone config encryption** master password and runs **`security add-generic-password`** so **`mount_onedrive.sh`** can read **`RCLONE_CONFIG_PASS`** at runtime. Skipped if the service name is empty, if **`--skip-keychain`** is passed, or if **stdin is not a TTY** (e.g. piped install — add the Keychain item manually in that case). See [§2 — Keychain](#encrypting-rcloneconf-and-macos-keychain-recommended).
 5. Writes **`~/Library/LaunchAgents/com.rclone-onedrive.mount.plist`** (override with **`--label`**) pointing at **`/bin/bash …/startup_mount_onedrive.sh <volume>`** (not **`mount_onedrive.sh`** directly), with **`PATH`**, **`STARTUP_MOUNT_DELAY_SEC=10`**, and Homebrew on **`PATH`**.
 6. Runs **`launchctl bootstrap gui/$(id -u) …`** (or **`launchctl load`** on older macOS).
-7. Appends **shell functions** (not aliases — zsh mishandles spaces in alias targets) to **`~/.zshrc`** and **`~/.bash_profile`** (marked block, replaced on reinstall): **`install_rclone_ondrive`**, **`mount_rclone_ondrive`**, **`unmount_rclone_onedrive`**, **`login_rclone_ondrive`**, **`logout_rclone_onedrive`**, **`check_rclone_ondrive`**, **`reset_rclone_ondrive`**, **`uninstall_rclone_onedrive`** — each invokes the scripts under the install directory so generic names are not added to **`PATH`**. Run **`source ~/.zshrc`** (or open a new tab) after installing.
+7. Appends **shell functions** (not aliases — zsh mishandles spaces in alias targets) to **`~/.zshrc`** and **`~/.bash_profile`** (marked block, replaced on reinstall): **`install_rclone_onedrive`**, **`mount_rclone_onedrive`**, **`unmount_rclone_onedrive`**, **`login_rclone_onedrive`**, **`logout_rclone_onedrive`**, **`check_rclone_onedrive`**, **`reset_rclone_onedrive`**, **`uninstall_rclone_onedrive`**, and **`rclone_onedrive_help`** (prints the list of helpers and paths). Each helper invokes the scripts under the install directory so generic names are not added to **`PATH`**. Run **`source ~/.zshrc`** (or open a new tab) after installing, then **`rclone_onedrive_help`** anytime to see what is available.
 
 ### Dry-run (recommended first)
 
