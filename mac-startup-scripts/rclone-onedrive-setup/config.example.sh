@@ -30,6 +30,10 @@ CACHE_MAX_SIZE=(
   "10G"
 )
 
+# Optional: put the VFS cache on another volume (e.g. a small APFS partition on the same
+# external disk while OneDrive folders stay on exFAT). See docs/apfs-cache-partition-exfat-example.md
+# CACHE_DIR="/Volumes/RcloneCache"
+
 # --- Optional: encrypted rclone.conf + macOS Keychain ---
 # If you run: rclone config encryption set
 # then rclone needs RCLONE_CONFIG_PASS. Do not put the password in this file.

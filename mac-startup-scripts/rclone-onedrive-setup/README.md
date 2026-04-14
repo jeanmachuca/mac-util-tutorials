@@ -311,6 +311,7 @@ Edit `config.sh` so that:
 - **`REMOTE_PATHS`** lists folders **on OneDrive** (as returned by `rclone lsd`).
 - **`LOCAL_NAMES`** lists the folder names you want under `/Volumes/<YourDrive>/OneDrive/` on the external disk.
 - **`CACHE_MAX_SIZE`** sets a per-mount VFS cache limit (for example `50G`).
+- Optionally set **`CACHE_DIR`** to send the **VFS cache** to another path (for example a **dedicated APFS partition** on the same external disk while **OneDrive** folders stay on **exFAT**). See **[docs/apfs-cache-partition-exfat-example.md](docs/apfs-cache-partition-exfat-example.md)** (example: **1 TB** disk, **50 GB** cache partition).
 - Optionally set **`RCLONE_BIN`** to the **full path** of **`rclone`** if **`command -v rclone`** fails (for example under **LaunchAgent** with a minimal **`PATH`**). Otherwise the scripts use the same path **`command -v rclone`** would print (not **`which`**, which is less reliable in non-interactive shells).
 - If you use **encrypted `rclone.conf`**, set **`RCLONE_CONFIG_KEYCHAIN_SERVICE`** (and optionally **`RCLONE_CONFIG_KEYCHAIN_ACCOUNT`**) as in [§2 — Encrypting `rclone.conf` and macOS Keychain](#encrypting-rcloneconf-and-macos-keychain-recommended). Never put the master password in **`config.sh`**.
 

@@ -60,6 +60,24 @@ load_rclone_config_pass_from_keychain() {
 
 load_rclone_config_pass_from_keychain
 
+# Optional CACHE_DIR from config.sh: --cache-dir for VFS (see config.example.sh).
+cache_dir_args=()
+if [ -n "${CACHE_DIR:-}" ]; then
+	case "$CACHE_DIR" in
+	/Volumes/*)
+		if [ ! -d "$CACHE_DIR" ]; then
+			echo "Error: CACHE_DIR is set but does not exist: $CACHE_DIR" >&2
+			echo "  Mount the cache volume first, or fix CACHE_DIR in config.sh." >&2
+			exit 1
+		fi
+		;;
+	*)
+		mkdir -p "$CACHE_DIR"
+		;;
+	esac
+	cache_dir_args=(--cache-dir "$CACHE_DIR")
+fi
+
 # Default: --daemon (script returns after starting rclone; fine for Terminal / login.sh).
 # --no-daemon / --persistent: rclone without --daemon, script waits on PIDs — use under launchd
 # so the parent process stays alive and mounts are not torn down when bash exits.
@@ -129,12 +147,14 @@ while [ "$i" -lt "$n" ]; do
 	if [ "$USE_DAEMON" -eq 1 ]; then
 		"$RCLONE" mount "${REMOTE_NAME}:${remote}" "$target" \
 			--allow-non-empty \
+			"${cache_dir_args[@]}" \
 			--vfs-cache-mode full \
 			--vfs-cache-max-size "$cache" \
 			--daemon
 	else
 		"$RCLONE" mount "${REMOTE_NAME}:${remote}" "$target" \
 			--allow-non-empty \
+			"${cache_dir_args[@]}" \
 			--vfs-cache-mode full \
 			--vfs-cache-max-size "$cache" &
 		pids+=($!)
