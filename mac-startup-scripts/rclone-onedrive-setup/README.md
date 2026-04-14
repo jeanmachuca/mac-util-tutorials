@@ -355,7 +355,19 @@ You can **drag a mounted folder** (for example `.../OneDrive/Documents`) into th
 
 **Do not treat this like a normal USB stick.** Always tear down **rclone** and **FUSE** first, then eject.
 
+### After large copies: when is network idle enough?
+
+**Finder** or **Terminal** showing a copy as **finished** is **not** always enough: with **`--vfs-cache-mode full`**, **`rclone`** may still be **uploading** from cache to OneDrive. **`du`** on the mount or on a cache path does **not** tell you whether uploads are done—use **Activity Monitor** (or wait conservatively after huge jobs).
+
+1. Open **Activity Monitor** → **Network** → filter by **`rclone`**.
+2. Watch **Data sent/sec** and **Data received/sec** for the **`rclone`** rows (not only the **summary** at the bottom, which can include **other apps**).
+3. **Heavy upload still in progress** usually shows **sustained** throughput—often **hundreds of KB/s to MB/s** on a typical link—for long stretches, not brief blips.
+4. **Light, bursty traffic** (for example **~2 KB/s** to **~30–40 KB/s** bouncing around) is **common** when nothing big is transferring: **HTTPS**, **API/metadata**, keepalives, and small reads. That pattern **does not** prove a large upload is still running—but **MB/s-class sustained** **`rclone`** traffic means you should **wait**.
+5. When copies are **done**, apps are **closed**, and **`rclone`** stays in the **few KB/s to a few tens of KB/s** range without **sustained** upload-sized rates, it is usually **reasonable** to run **`unmount_onedrive.sh`**. After a **very large** upload, optionally confirm files in **OneDrive on the web**, then unmount.
+
 ### Recommended workflow (checklist)
+
+If you **just copied large files to OneDrive** through the mount, use **Activity Monitor** as in **[After large copies](#after-large-copies-when-is-network-idle-enough)** before relying on “copy finished” alone.
 
 1. **Quit or close files** that are using anything under `/Volumes/<YourDrive>/OneDrive/` (editors, media apps, terminals with `cd` into those paths, and files opened from a **Finder sidebar** favorite that points there).
 2. Run **`unmount_onedrive.sh`** with your volume name (same name you used for `mount_onedrive.sh`), or **`./logout.sh`** if **`EXTERNAL_VOLUME_NAME`** is set in **`config.sh`**:
