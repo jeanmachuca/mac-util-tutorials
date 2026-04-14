@@ -31,6 +31,8 @@ CACHE_MAX_SIZE=(
 # If you run: rclone config encryption set
 # then rclone needs RCLONE_CONFIG_PASS. Do not put the password in this file.
 # Easiest: ./setup_rclone_encryption_keychain.sh  (encrypts + Keychain)
+# Integrity: ./check_rclone_config.sh  (verify rclone can read and decrypt ~/.config/rclone/rclone.conf)
+# Full reset: ./reset_rclone_config.sh  (remove local rclone.conf; backs up by default — cloud unchanged)
 # 1) Set the service name here (must match Keychain). Leave empty to skip Keychain.
 # 2) Add the password: run setup_rclone_encryption_keychain.sh, ./install.sh (it prompts), or manually:
 #    security add-generic-password -a "$USER" -s "rclone-onedrive-config" -w

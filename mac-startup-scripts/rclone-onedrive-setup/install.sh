@@ -163,13 +163,13 @@ check_shell_alias_targets() {
 	local ctx="${2:-install directory}"
 	local name
 
-	for name in install.sh mount_onedrive.sh unmount_onedrive.sh login.sh logout.sh; do
+	for name in install.sh mount_onedrive.sh unmount_onedrive.sh login.sh logout.sh check_rclone_config.sh reset_rclone_config.sh; do
 		if [ ! -f "$d/$name" ]; then
 			log_fail "Shell alias target missing ($ctx): $d/$name"
 			return 1
 		fi
 	done
-	log_ok "Shell alias targets OK ($ctx): install.sh, mount_onedrive.sh, unmount_onedrive.sh, login.sh, logout.sh"
+	log_ok "Shell alias targets OK ($ctx): install.sh, mount_onedrive.sh, unmount_onedrive.sh, login.sh, logout.sh, check_rclone_config.sh, reset_rclone_config.sh"
 	return 0
 }
 
@@ -517,7 +517,7 @@ run_dry_run() {
 		echo "========== Dry-run summary (nothing was written) =========="
 		echo ""
 		echo "Symlinks in the source tree were checked above (dangling symlinks would have failed)."
-		echo "Shell alias targets (install.sh, mount_onedrive.sh, unmount_onedrive.sh, login.sh, logout.sh) were checked in the source tree."
+		echo "Shell alias targets (install.sh, mount_onedrive.sh, unmount_onedrive.sh, login.sh, logout.sh, check_rclone_config.sh, reset_rclone_config.sh) were checked in the source tree."
 		echo ""
 		echo "Would rsync from:"
 		echo "    $SRC/"
@@ -530,7 +530,7 @@ run_dry_run() {
 		echo "Would append shell aliases to:"
 		echo "    ${HOME}/.zshrc"
 		echo "    ${HOME}/.bash_profile"
-		echo "    (install_rclone_ondrive, mount_rclone_ondrive, unmount_rclone_onedrive, login_rclone_ondrive, logout_rclone_onedrive, uninstall_rclone_onedrive)"
+		echo "    (install_rclone_ondrive, mount_rclone_ondrive, unmount_rclone_onedrive, login_rclone_ondrive, logout_rclone_onedrive, check_rclone_ondrive, reset_rclone_ondrive, uninstall_rclone_onedrive)"
 		echo ""
 		if [ -n "${ksvc:-}" ]; then
 			if [ "$SKIP_KEYCHAIN" -eq 1 ]; then
@@ -602,6 +602,8 @@ install_shell_alias_hooks() {
 			echo "alias unmount_rclone_onedrive=$(shell_single_quote "${dest}/unmount_onedrive.sh")"
 			echo "alias login_rclone_ondrive=$(shell_single_quote "${dest}/login.sh")"
 			echo "alias logout_rclone_onedrive=$(shell_single_quote "${dest}/logout.sh")"
+			echo "alias check_rclone_ondrive=$(shell_single_quote "${dest}/check_rclone_config.sh")"
+			echo "alias reset_rclone_ondrive=$(shell_single_quote "${dest}/reset_rclone_config.sh")"
 			echo "alias uninstall_rclone_onedrive=$(shell_single_quote "${dest}/install.sh --uninstall")"
 			echo "$ALIAS_HOOK_END"
 			echo ""
@@ -636,6 +638,8 @@ print_install_summary() {
 	echo "    unmount_rclone_onedrive   → ${dest}/unmount_onedrive.sh"
 	echo "    login_rclone_ondrive      → ${dest}/login.sh"
 	echo "    logout_rclone_onedrive    → ${dest}/logout.sh"
+	echo "    check_rclone_ondrive      → ${dest}/check_rclone_config.sh"
+	echo "    reset_rclone_ondrive      → ${dest}/reset_rclone_config.sh"
 	echo "    uninstall_rclone_onedrive → ${dest}/install.sh --uninstall"
 	echo "    In this session run:  source ~/.zshrc   # or ~/.bash_profile"
 	echo ""
@@ -713,7 +717,7 @@ do_install() {
 
 	check_symlinks_in_tree "$DEST" "install directory" || exit 1
 
-	chmod +x "$DEST/mount_onedrive.sh" "$DEST/unmount_onedrive.sh" "$DEST/login.sh" "$DEST/logout.sh" "$DEST/install.sh" "$DEST/setup_rclone_encryption_keychain.sh" 2>/dev/null || true
+	chmod +x "$DEST/mount_onedrive.sh" "$DEST/unmount_onedrive.sh" "$DEST/login.sh" "$DEST/logout.sh" "$DEST/check_rclone_config.sh" "$DEST/reset_rclone_config.sh" "$DEST/install.sh" "$DEST/setup_rclone_encryption_keychain.sh" 2>/dev/null || true
 
 	if [ ! -f "$DEST/config.sh" ]; then
 		if [ -f "$SRC/config.sh" ]; then
