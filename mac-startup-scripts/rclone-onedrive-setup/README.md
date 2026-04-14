@@ -372,14 +372,15 @@ Use this **only after** [§4](#4-create-your-configsh) is correct and a **manual
 ### What it does
 
 1. **`rsync`** from the directory containing **`install.sh`** into **`~/Library/Application Support/rclone-onedrive-setup/`** (excludes `.git`, `.DS_Store`, `.cursor`, `*.swp`).
-2. Ensures **`config.sh`** exists in the install dir (copies from your clone’s **`config.sh`**, or from **`config.example.sh`** if needed—then **edit** **`EXTERNAL_VOLUME_NAME`** and paths there).
-3. Writes **`~/Library/LaunchAgents/com.rclone-onedrive.mount.plist`** (override with **`--label`**) pointing at **`/bin/bash …/mount_onedrive.sh <volume>`**, with **`PATH`** including Homebrew.
-4. Runs **`launchctl bootstrap gui/$(id -u) …`** (or **`launchctl load`** on older macOS).
-5. Appends **shell aliases** to **`~/.zshrc`** and **`~/.bash_profile`** (marked block, replaced on reinstall): **`install_rclone_ondrive`**, **`mount_rclone_ondrive`**, **`unmount_rclone_onedrive`**, **`uninstall_rclone_onedrive`** — each points at the scripts under the install directory so generic names are not added to **`PATH`**. Run **`source ~/.zshrc`** (or open a new tab) after installing.
+2. **Symlink integrity:** checks every **filesystem symlink** under the **source tree** before copying, and again under the **install directory** after **`rsync`**. **Dangling** symlinks (broken targets) produce **[FAIL]** (same **`.git`** / **`.cursor`** exclusions as **`rsync`**). This is separate from **shell aliases** (step 6): aliases are not symlinks, but the installer also verifies that **`install.sh`**, **`mount_onedrive.sh`**, and **`unmount_onedrive.sh`** exist before appending aliases to **`~/.zshrc`** / **`~/.bash_profile`**.
+3. Ensures **`config.sh`** exists in the install dir (copies from your clone’s **`config.sh`**, or from **`config.example.sh`** if needed—then **edit** **`EXTERNAL_VOLUME_NAME`** and paths there).
+4. Writes **`~/Library/LaunchAgents/com.rclone-onedrive.mount.plist`** (override with **`--label`**) pointing at **`/bin/bash …/mount_onedrive.sh <volume>`**, with **`PATH`** including Homebrew.
+5. Runs **`launchctl bootstrap gui/$(id -u) …`** (or **`launchctl load`** on older macOS).
+6. Appends **shell aliases** to **`~/.zshrc`** and **`~/.bash_profile`** (marked block, replaced on reinstall): **`install_rclone_ondrive`**, **`mount_rclone_ondrive`**, **`unmount_rclone_onedrive`**, **`uninstall_rclone_onedrive`** — each points at the scripts under the install directory so generic names are not added to **`PATH`**. Run **`source ~/.zshrc`** (or open a new tab) after installing.
 
 ### Dry-run (recommended first)
 
-Checks **macOS**, **`rclone`**, **`rsync`**, **`plutil`**, required source files, and that **`config.sh`** is complete: **`REMOTE_NAME`**, **`REMOTE_PATHS` / `LOCAL_NAMES` / `CACHE_MAX_SIZE`** (same length, no empty entries), and **`EXTERNAL_VOLUME_NAME`** unless you pass a **volume name** on the command line (same rules as **`mount_onedrive.sh`**). Then checks install path writability and validates a **temporary** plist with **`plutil -lint`**. **No files are copied**, **launchd** is not changed, and **shell rc files** are not modified.
+Checks **macOS**, **`rclone`**, **`rsync`**, **`plutil`**, required source files, **symlink integrity** in the source tree (no dangling symlinks), **shell alias targets** (**`install.sh`**, **`mount_onedrive.sh`**, **`unmount_onedrive.sh`** present in the source tree), and that **`config.sh`** is complete: **`REMOTE_NAME`**, **`REMOTE_PATHS` / `LOCAL_NAMES` / `CACHE_MAX_SIZE`** (same length, no empty entries), and **`EXTERNAL_VOLUME_NAME`** unless you pass a **volume name** on the command line (same rules as **`mount_onedrive.sh`**). Then checks install path writability and validates a **temporary** plist with **`plutil -lint`**. **No files are copied**, **launchd** is not changed, and **shell rc files** are not modified.
 
 If **`rclone`** is missing, the script exits with **[FAIL]** and prints install hints: **`brew install rclone`** (macOS) and the official installer for Linux/macOS/BSD:
 

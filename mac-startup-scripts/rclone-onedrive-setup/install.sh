@@ -120,6 +120,56 @@ check_src_layout() {
 	return "$err"
 }
 
+# Every symlink under root must resolve; dangling symlinks fail install / dry-run.
+# Excludes .git and .cursor (same as rsync).
+check_symlinks_in_tree() {
+	local root="$1"
+	local ctx="${2:-$root}"
+	local broken=0
+	local n=0
+	local f t
+
+	if [ ! -d "$root" ]; then
+		return 0
+	fi
+
+	while IFS= read -r -d '' f; do
+		n=$((n + 1))
+		if [ -L "$f" ] && [ ! -e "$f" ]; then
+			t="$(readlink "$f" 2>/dev/null || printf '%s' '?')"
+			log_fail "Broken symlink in $ctx: $f -> $t"
+			broken=$((broken + 1))
+		fi
+	done < <(find "$root" -type l ! -path '*/.git/*' ! -path '*/.cursor/*' -print0 2>/dev/null)
+
+	if [ "$broken" -gt 0 ]; then
+		log_fail "Symlink integrity check failed ($broken broken symlink(s) in $ctx)."
+		return 1
+	fi
+	if [ "$n" -eq 0 ]; then
+		log_ok "Symlink integrity: OK (no symlinks under $ctx)."
+	else
+		log_ok "Symlink integrity: OK ($n symlink(s) under $ctx)."
+	fi
+	return 0
+}
+
+# Shell aliases point at these files; ensure they exist before editing ~/.zshrc (not covered by symlink scan).
+check_shell_alias_targets() {
+	local d="$1"
+	local ctx="${2:-install directory}"
+	local name
+
+	for name in install.sh mount_onedrive.sh unmount_onedrive.sh; do
+		if [ ! -f "$d/$name" ]; then
+			log_fail "Shell alias target missing ($ctx): $d/$name"
+			return 1
+		fi
+	done
+	log_ok "Shell alias targets OK ($ctx): install.sh, mount_onedrive.sh, unmount_onedrive.sh"
+	return 0
+}
+
 # Validate config.sh (same rules as mount_onedrive.sh + EXTERNAL_VOLUME_NAME for LaunchAgent).
 # Second arg: if "1", skip EXTERNAL_VOLUME_NAME check (volume passed on install.sh command line).
 validate_config_sh() {
@@ -322,6 +372,8 @@ run_dry_run() {
 	require_darwin || err=1
 	check_tools || err=1
 	check_src_layout || err=1
+	check_symlinks_in_tree "$SRC" "source tree" || err=1
+	check_shell_alias_targets "$SRC" "source tree" || err=1
 	if [ "$err" -eq 0 ] && ! validate_config_sh "$SRC/config.sh" "$skip_ev"; then
 		err=1
 	fi
@@ -360,6 +412,9 @@ run_dry_run() {
 	echo ""
 	if [ "$err" -eq 0 ]; then
 		echo "========== Dry-run summary (nothing was written) =========="
+		echo ""
+		echo "Symlinks in the source tree were checked above (dangling symlinks would have failed)."
+		echo "Shell alias targets (install.sh, mount_onedrive.sh, unmount_onedrive.sh) were checked in the source tree."
 		echo ""
 		echo "Would rsync from:"
 		echo "    $SRC/"
@@ -514,6 +569,7 @@ do_install() {
 	require_darwin || exit 1
 	check_tools || exit 1
 	check_src_layout || exit 1
+	check_symlinks_in_tree "$SRC" "source tree" || exit 1
 	validate_config_sh "$SRC/config.sh" "$skip_ev" || exit 1
 	check_dest_parent || exit 1
 
@@ -531,6 +587,8 @@ do_install() {
 		--exclude '*.swp' \
 		--exclude '.cursor' \
 		"$SRC/" "$DEST/"
+
+	check_symlinks_in_tree "$DEST" "install directory" || exit 1
 
 	chmod +x "$DEST/mount_onedrive.sh" "$DEST/unmount_onedrive.sh" "$DEST/install.sh" 2>/dev/null || true
 
@@ -578,6 +636,8 @@ do_install() {
 			log_warn "Could not bootstrap/load automatically. Try: launchctl bootstrap gui/$(id -u) $PLIST_PATH"
 		fi
 	fi
+
+	check_shell_alias_targets "$DEST" "install directory" || exit 1
 
 	install_shell_alias_hooks "$DEST"
 
