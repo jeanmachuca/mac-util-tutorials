@@ -40,6 +40,12 @@ else
 	warn "No config.sh next to this script — Keychain settings must come from the environment (RCLONE_CONFIG_KEYCHAIN_SERVICE) or use RCLONE_CONFIG_PASS for encrypted configs."
 fi
 
+# shellcheck source=rclone_resolve.sh
+source "${SCRIPT_DIR}/rclone_resolve.sh"
+if ! set_rclone_executable; then
+	exit 1
+fi
+
 load_rclone_config_pass_from_keychain() {
 	if [ -n "${RCLONE_CONFIG_PASS:-}" ]; then
 		return 0
@@ -75,13 +81,9 @@ load_rclone_config_pass_from_keychain() {
 	return 0
 }
 
-if ! command -v rclone >/dev/null 2>&1; then
-	fail "rclone not in PATH."
-	exit 1
-fi
-ok "rclone found: $(command -v rclone)"
+ok "rclone found: $RCLONE"
 
-RCONF="$(rclone config file 2>/dev/null | tail -n 1)"
+RCONF="$("$RCLONE" config file 2>/dev/null | tail -n 1)"
 if [ -z "$RCONF" ]; then
 	fail "Could not determine config path (rclone config file)."
 	exit 1
@@ -114,7 +116,7 @@ if head -n 1 "$RCONF" | grep -q '^# Encrypted rclone configuration'; then
 		exit 1
 	fi
 	ok "Decryption password available (environment or Keychain)."
-	if ! rclone config encryption check >/dev/null 2>&1; then
+	if ! "$RCLONE" config encryption check >/dev/null 2>&1; then
 		fail "rclone config encryption check — wrong password or corrupted encrypted file?"
 		exit 1
 	fi
@@ -123,7 +125,7 @@ else
 	ok "Config is not encrypted (plain INI-style file)."
 fi
 
-if ! remotes="$(rclone listremotes 2>/dev/null)"; then
+if ! remotes="$("$RCLONE" listremotes 2>/dev/null)"; then
 	fail "rclone listremotes failed — config may be corrupt or unreadable."
 	exit 1
 fi

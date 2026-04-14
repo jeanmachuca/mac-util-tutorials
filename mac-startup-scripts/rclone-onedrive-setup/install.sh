@@ -106,7 +106,7 @@ check_tools() {
 
 check_src_layout() {
 	local err=0
-	for f in mount_onedrive.sh startup_mount_onedrive.sh unmount_onedrive.sh config.example.sh; do
+	for f in mount_onedrive.sh rclone_resolve.sh startup_mount_onedrive.sh unmount_onedrive.sh config.example.sh; do
 		if [ -f "$SRC/$f" ]; then
 			log_ok "Source file present: $f"
 		else
@@ -163,13 +163,13 @@ check_shell_alias_targets() {
 	local ctx="${2:-install directory}"
 	local name
 
-	for name in install.sh mount_onedrive.sh unmount_onedrive.sh login.sh logout.sh check_rclone_config.sh reset_rclone_config.sh; do
+	for name in install.sh mount_onedrive.sh rclone_resolve.sh unmount_onedrive.sh login.sh logout.sh check_rclone_config.sh reset_rclone_config.sh; do
 		if [ ! -f "$d/$name" ]; then
 			log_fail "Shell alias target missing ($ctx): $d/$name"
 			return 1
 		fi
 	done
-	log_ok "Shell alias targets OK ($ctx): install.sh, mount_onedrive.sh, unmount_onedrive.sh, login.sh, logout.sh, check_rclone_config.sh, reset_rclone_config.sh"
+	log_ok "Shell alias targets OK ($ctx): install.sh, mount_onedrive.sh, rclone_resolve.sh, unmount_onedrive.sh, login.sh, logout.sh, check_rclone_config.sh, reset_rclone_config.sh"
 	return 0
 }
 
@@ -519,7 +519,7 @@ run_dry_run() {
 		echo "========== Dry-run summary (nothing was written) =========="
 		echo ""
 		echo "Symlinks in the source tree were checked above (dangling symlinks would have failed)."
-		echo "Shell hook targets (install.sh, mount_onedrive.sh, unmount_onedrive.sh, login.sh, logout.sh, check_rclone_config.sh, reset_rclone_config.sh) were checked in the source tree."
+		echo "Shell hook targets (install.sh, mount_onedrive.sh, rclone_resolve.sh, unmount_onedrive.sh, login.sh, logout.sh, check_rclone_config.sh, reset_rclone_config.sh) were checked in the source tree."
 		echo ""
 		echo "Would rsync from:"
 		echo "    $SRC/"

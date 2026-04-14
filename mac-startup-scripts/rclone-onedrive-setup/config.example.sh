@@ -3,6 +3,9 @@
 #
 # List remote folders with:
 #   rclone lsd your-remote-name:
+#
+# Optional: absolute path to rclone if `command -v rclone` fails under launchd. Example:
+# RCLONE_BIN="/opt/homebrew/bin/rclone"
 
 REMOTE_NAME="onedrive"
 

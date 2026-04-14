@@ -11,6 +11,9 @@ if [ ! -f "$CONFIG" ]; then
 fi
 # shellcheck source=config.sh
 source "$CONFIG"
+# shellcheck source=rclone_resolve.sh
+source "${SCRIPT_DIR}/rclone_resolve.sh"
+set_rclone_executable || exit 1
 
 # If rclone.conf is encrypted, set RCLONE_CONFIG_PASS before any rclone invocation.
 # Optional: read the master password from macOS Keychain (see config.example.sh + README).
@@ -57,10 +60,39 @@ load_rclone_config_pass_from_keychain() {
 
 load_rclone_config_pass_from_keychain
 
+# Default: --daemon (script returns after starting rclone; fine for Terminal / login.sh).
+# --no-daemon / --persistent: rclone without --daemon, script waits on PIDs — use under launchd
+# so the parent process stays alive and mounts are not torn down when bash exits.
+USE_DAEMON=1
+while [ $# -gt 0 ]; do
+	case "$1" in
+	--no-daemon | --persistent)
+		USE_DAEMON=0
+		shift
+		;;
+	-h | --help)
+		echo "Usage: ./mount_onedrive.sh [--no-daemon|--persistent] <DriveName>"
+		echo "  Default: each rclone mount uses --daemon (returns after starting mounts)."
+		echo "  --no-daemon / --persistent: keep this script running until rclone exits (LaunchAgent)."
+		echo "Example: ./mount_onedrive.sh MyExternalDrive"
+		echo "Example: ./mount_onedrive.sh --no-daemon MyExternalDrive"
+		exit 0
+		;;
+	-*)
+		echo "Unknown option: $1" >&2
+		echo "Usage: ./mount_onedrive.sh [--no-daemon|--persistent] <DriveName>" >&2
+		exit 1
+		;;
+	*)
+		break
+		;;
+	esac
+done
+
 if [ -z "${1:-}" ]; then
-    echo "Usage: ./mount_onedrive.sh [DriveName]"
-    echo "Example: ./mount_onedrive.sh MyExternalDrive"
-    exit 1
+	echo "Usage: ./mount_onedrive.sh [--no-daemon|--persistent] <DriveName>" >&2
+	echo "Example: ./mount_onedrive.sh MyExternalDrive" >&2
+	exit 1
 fi
 
 n=${#REMOTE_PATHS[@]}
@@ -81,24 +113,40 @@ if [ ! -d "/Volumes/$DRIVE_NAME" ]; then
     exit 1
 fi
 
-echo "Starting rclone mounts on $DRIVE_NAME..."
+echo "Starting rclone mounts on $DRIVE_NAME (using $RCLONE)..."
 
 i=0
+pids=()
 while [ "$i" -lt "$n" ]; do
-    remote="${REMOTE_PATHS[$i]}"
-    local_name="${LOCAL_NAMES[$i]}"
-    cache="${CACHE_MAX_SIZE[$i]}"
-    target="$BASE_PATH/$local_name"
+	remote="${REMOTE_PATHS[$i]}"
+	local_name="${LOCAL_NAMES[$i]}"
+	cache="${CACHE_MAX_SIZE[$i]}"
+	target="$BASE_PATH/$local_name"
 
-    umount "$target" 2>/dev/null || true
-    mkdir -p "$target"
+	umount "$target" 2>/dev/null || true
+	mkdir -p "$target"
 
-    rclone mount "${REMOTE_NAME}:${remote}" "$target" \
-        --allow-non-empty \
-        --vfs-cache-mode full \
-        --vfs-cache-max-size "$cache" \
-        --daemon
-    i=$((i + 1))
+	if [ "$USE_DAEMON" -eq 1 ]; then
+		"$RCLONE" mount "${REMOTE_NAME}:${remote}" "$target" \
+			--allow-non-empty \
+			--vfs-cache-mode full \
+			--vfs-cache-max-size "$cache" \
+			--daemon
+	else
+		"$RCLONE" mount "${REMOTE_NAME}:${remote}" "$target" \
+			--allow-non-empty \
+			--vfs-cache-mode full \
+			--vfs-cache-max-size "$cache" &
+		pids+=($!)
+	fi
+	i=$((i + 1))
 done
 
-echo "Mounts active under $BASE_PATH"
+if [ "$USE_DAEMON" -eq 1 ]; then
+	echo "Mounts active under $BASE_PATH"
+else
+	echo "Mounts active under $BASE_PATH (persistent — waiting on rclone; use under launchd)"
+	for pid in "${pids[@]}"; do
+		wait "$pid"
+	done
+fi
