@@ -251,7 +251,7 @@ By default, rclone stores remotes and OAuth tokens in **`~/.config/rclone/rclone
 
    Otherwise, pick a **service name** you will reuse (example: **`rclone-onedrive-config`**). In **`config.sh`** (from **`config.example.sh`**), set **`RCLONE_CONFIG_KEYCHAIN_SERVICE`** to that name first.
 
-   **Option A — during `install.sh` (recommended):** When you run [**`./install.sh`**](#optional-installsh-application-support-and-login-mount) and **`RCLONE_CONFIG_KEYCHAIN_SERVICE`** is non-empty, the installer **prompts twice** for the encryption password (nothing is echoed) and runs **`security add-generic-password`** for you (creates a new item or updates an existing one). Use **`./install.sh --skip-keychain`** if you prefer to add the Keychain item yourself.
+   **Option A — during `install.sh` (recommended):** When you run [**`./install.sh`**](#optional-installsh-application-support-and-login-mount) and **`RCLONE_CONFIG_KEYCHAIN_SERVICE`** is non-empty, the installer **prompts twice** for the encryption password (enter + confirm; nothing is echoed), prints a short notice that **Keychain / `security`** is next, then runs **`security add-generic-password`** **once** (create or **`-U`** update). **macOS** may still show extra prompts (e.g. confirming the new Keychain item); that is normal and separate from the installer’s enter/confirm step. Use **`./install.sh --skip-keychain`** if you prefer to add the Keychain item yourself.
 
    **Option B — manual Terminal command:** On Apple’s **`security`** tool, put **`-w` last** with **no** password on the command line so Terminal **prompts** interactively (avoids putting the secret in shell history):
 

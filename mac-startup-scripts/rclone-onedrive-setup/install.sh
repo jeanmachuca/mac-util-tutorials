@@ -392,14 +392,36 @@ prompt_and_store_rclone_keychain_password() {
 		return 1
 	fi
 
-	if printf '%s' "$p1" | security add-generic-password -a "$acct_use" -s "$svc" -w 2>/dev/null; then
-		log_ok "Keychain: saved password for service '$svc' (new item)."
-	elif printf '%s' "$p1" | security add-generic-password -a "$acct_use" -s "$svc" -U -w 2>/dev/null; then
-		log_ok "Keychain: updated password for service '$svc'."
+	echo ""
+	echo "Saving to your login Keychain via macOS \`security\` (service: $svc)…"
+	echo "If you see more prompts (e.g. \"password data for new item\" / \"retype\"), that is"
+	echo "Keychain confirming the stored secret — not this installer asking again by mistake."
+	echo ""
+
+	# Probe once, then add OR update once. (Trying add then add -U caused two security(1) flows and extra prompts.)
+	local keychain_exists=0
+	if security find-generic-password -a "$acct_use" -s "$svc" >/dev/null 2>&1; then
+		keychain_exists=1
+	fi
+
+	# security -w reads a password *line* from stdin; without a trailing newline it may read
+	# nothing and fall back to interactive "password data for new item" / "retype" prompts.
+	if [ "$keychain_exists" -eq 1 ]; then
+		if printf '%s\n' "$p1" | security add-generic-password -a "$acct_use" -s "$svc" -U -w; then
+			log_ok "Keychain: updated password for service '$svc'."
+		else
+			log_fail "security add-generic-password -U failed. Remove any conflicting item in Keychain Access or fix permissions."
+			unset p1 p2
+			return 1
+		fi
 	else
-		log_fail "security add-generic-password failed. Remove any conflicting item in Keychain Access or fix permissions."
-		unset p1 p2
-		return 1
+		if printf '%s\n' "$p1" | security add-generic-password -a "$acct_use" -s "$svc" -w; then
+			log_ok "Keychain: saved password for service '$svc' (new item)."
+		else
+			log_fail "security add-generic-password failed. Remove any conflicting item in Keychain Access or fix permissions."
+			unset p1 p2
+			return 1
+		fi
 	fi
 
 	unset p1 p2
