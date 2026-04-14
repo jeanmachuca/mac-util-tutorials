@@ -404,10 +404,10 @@ prompt_and_store_rclone_keychain_password() {
 		keychain_exists=1
 	fi
 
-	# security -w reads a password *line* from stdin; without a trailing newline it may read
-	# nothing and fall back to interactive "password data for new item" / "retype" prompts.
+	# security -w reads a password line from stdin. Use a bash here-string (no printf pipeline)
+	# so the secret is not passed through an extra process.
 	if [ "$keychain_exists" -eq 1 ]; then
-		if printf '%s\n' "$p1" | security add-generic-password -a "$acct_use" -s "$svc" -U -w; then
+		if security add-generic-password -a "$acct_use" -s "$svc" -U -w <<<"$p1"; then
 			log_ok "Keychain: updated password for service '$svc'."
 		else
 			log_fail "security add-generic-password -U failed. Remove any conflicting item in Keychain Access or fix permissions."
@@ -415,7 +415,7 @@ prompt_and_store_rclone_keychain_password() {
 			return 1
 		fi
 	else
-		if printf '%s\n' "$p1" | security add-generic-password -a "$acct_use" -s "$svc" -w; then
+		if security add-generic-password -a "$acct_use" -s "$svc" -w <<<"$p1"; then
 			log_ok "Keychain: saved password for service '$svc' (new item)."
 		else
 			log_fail "security add-generic-password failed. Remove any conflicting item in Keychain Access or fix permissions."
