@@ -106,7 +106,7 @@ check_tools() {
 
 check_src_layout() {
 	local err=0
-	for f in mount_onedrive.sh unmount_onedrive.sh config.example.sh; do
+	for f in mount_onedrive.sh startup_mount_onedrive.sh unmount_onedrive.sh config.example.sh; do
 		if [ -f "$SRC/$f" ]; then
 			log_ok "Source file present: $f"
 		else
@@ -409,7 +409,7 @@ prompt_and_store_rclone_keychain_password() {
 write_plist_xml() {
 	export INSTALL_PLIST_OUT="$1"
 	export INSTALL_PLIST_LABEL="$LABEL"
-	export INSTALL_MOUNT_SCRIPT="$2"
+	export INSTALL_LAUNCHD_SCRIPT="$2"
 	export INSTALL_VOLUME="$3"
 	/usr/bin/python3 <<'PY'
 import os
@@ -417,15 +417,16 @@ import plistlib
 
 out = os.environ["INSTALL_PLIST_OUT"]
 label = os.environ["INSTALL_PLIST_LABEL"]
-mount = os.environ["INSTALL_MOUNT_SCRIPT"]
+startup = os.environ["INSTALL_LAUNCHD_SCRIPT"]
 volume = os.environ["INSTALL_VOLUME"]
 
 pl = {
     "Label": label,
-    "ProgramArguments": ["/bin/bash", mount, volume],
+    "ProgramArguments": ["/bin/bash", startup, volume],
     "RunAtLoad": True,
     "EnvironmentVariables": {
         "PATH": "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin",
+        "STARTUP_MOUNT_DELAY_SEC": "10",
     },
     "StandardOutPath": "/tmp/rclone-onedrive-mount.log",
     "StandardErrorPath": "/tmp/rclone-onedrive-mount.err",
@@ -438,9 +439,9 @@ PY
 
 generate_and_lint_plist() {
 	local tmp="$1"
-	local mount_script="$2"
+	local launchd_script="$2"
 	local volume="$3"
-	write_plist_xml "$tmp" "$mount_script" "$volume"
+	write_plist_xml "$tmp" "$launchd_script" "$volume"
 	if ! plutil -lint "$tmp" >/dev/null; then
 		log_fail "Generated plist failed plutil -lint"
 		plutil -lint "$tmp" || true
@@ -490,11 +491,12 @@ run_dry_run() {
 		log_ok "Keychain: real install would not prompt (RCLONE_CONFIG_KEYCHAIN_SERVICE empty in config.sh)."
 	fi
 
+	local launchd_script="${DEST}/startup_mount_onedrive.sh"
 	local mount_script="${DEST}/mount_onedrive.sh"
 	echo ""
 	echo "Planned install directory: $DEST"
 	echo "Planned LaunchAgent plist:  $PLIST_PATH"
-	echo "Planned mount command:       /bin/bash $mount_script $vol"
+	echo "Planned login command:       /bin/bash $launchd_script $vol  (sleeps 10s, then $mount_script)"
 	echo ""
 	echo "Files to sync (rsync excludes: .git, .DS_Store, *.swp, .cursor):"
 	echo "  Source: $SRC/"
@@ -504,7 +506,7 @@ run_dry_run() {
 	if [ "$err" -eq 0 ]; then
 		local tmp
 		tmp="$(mktemp -t rclone-onedrive-plist.XXXXXX.plist)"
-		if generate_and_lint_plist "$tmp" "$mount_script" "$vol"; then
+		if generate_and_lint_plist "$tmp" "$launchd_script" "$vol"; then
 			log_ok "Dry-run plist XML is valid."
 		else
 			err=1
@@ -517,7 +519,7 @@ run_dry_run() {
 		echo "========== Dry-run summary (nothing was written) =========="
 		echo ""
 		echo "Symlinks in the source tree were checked above (dangling symlinks would have failed)."
-		echo "Shell alias targets (install.sh, mount_onedrive.sh, unmount_onedrive.sh, login.sh, logout.sh, check_rclone_config.sh, reset_rclone_config.sh) were checked in the source tree."
+		echo "Shell hook targets (install.sh, mount_onedrive.sh, unmount_onedrive.sh, login.sh, logout.sh, check_rclone_config.sh, reset_rclone_config.sh) were checked in the source tree."
 		echo ""
 		echo "Would rsync from:"
 		echo "    $SRC/"
@@ -527,7 +529,7 @@ run_dry_run() {
 		echo "    $PLIST_PATH"
 		echo "Would ensure directory:"
 		echo "    ${HOME}/Library/LaunchAgents/"
-		echo "Would append shell aliases to:"
+		echo "Would append shell helper functions to:"
 		echo "    ${HOME}/.zshrc"
 		echo "    ${HOME}/.bash_profile"
 		echo "    (install_rclone_ondrive, mount_rclone_ondrive, unmount_rclone_onedrive, login_rclone_ondrive, logout_rclone_onedrive, check_rclone_ondrive, reset_rclone_ondrive, uninstall_rclone_onedrive)"
@@ -551,7 +553,8 @@ run_dry_run() {
 			LC_ALL=C sort | sed "s|^$SRC/|$DEST/|" | sed 's/^/    /'
 		echo ""
 		echo "LaunchAgent would run at login:"
-		echo "    /bin/bash $mount_script $vol"
+		echo "    /bin/bash $launchd_script $vol"
+		echo "    (STARTUP_MOUNT_DELAY_SEC=10, then mount_onedrive.sh)"
 		echo ""
 		echo "==========================================================="
 		echo "Dry-run OK. Run without --dry-run to install."
@@ -587,7 +590,7 @@ shell_single_quote() {
 	printf "'"
 }
 
-# Shell aliases so script names do not clutter PATH (replaced on reinstall; strips legacy PATH hook).
+# Shell functions (not aliases: zsh splits alias values at spaces, breaking paths under Application Support).
 install_shell_alias_hooks() {
 	local dest="$1"
 	local f
@@ -597,27 +600,28 @@ install_shell_alias_hooks() {
 		remove_rclone_setup_shell_hooks_from_file "$f"
 		{
 			echo "$ALIAS_HOOK_BEGIN"
-			echo "alias install_rclone_ondrive=$(shell_single_quote "${dest}/install.sh")"
-			echo "alias mount_rclone_ondrive=$(shell_single_quote "${dest}/mount_onedrive.sh")"
-			echo "alias unmount_rclone_onedrive=$(shell_single_quote "${dest}/unmount_onedrive.sh")"
-			echo "alias login_rclone_ondrive=$(shell_single_quote "${dest}/login.sh")"
-			echo "alias logout_rclone_onedrive=$(shell_single_quote "${dest}/logout.sh")"
-			echo "alias check_rclone_ondrive=$(shell_single_quote "${dest}/check_rclone_config.sh")"
-			echo "alias reset_rclone_ondrive=$(shell_single_quote "${dest}/reset_rclone_config.sh")"
-			echo "alias uninstall_rclone_onedrive=$(shell_single_quote "${dest}/install.sh --uninstall")"
+			echo "install_rclone_ondrive() { command $(shell_single_quote "${dest}/install.sh") \"\$@\"; }"
+			echo "mount_rclone_ondrive() { command $(shell_single_quote "${dest}/mount_onedrive.sh") \"\$@\"; }"
+			echo "unmount_rclone_onedrive() { command $(shell_single_quote "${dest}/unmount_onedrive.sh") \"\$@\"; }"
+			echo "login_rclone_ondrive() { command $(shell_single_quote "${dest}/login.sh") \"\$@\"; }"
+			echo "logout_rclone_onedrive() { command $(shell_single_quote "${dest}/logout.sh") \"\$@\"; }"
+			echo "check_rclone_ondrive() { command $(shell_single_quote "${dest}/check_rclone_config.sh") \"\$@\"; }"
+			echo "reset_rclone_ondrive() { command $(shell_single_quote "${dest}/reset_rclone_config.sh") \"\$@\"; }"
+			echo "uninstall_rclone_onedrive() { command $(shell_single_quote "${dest}/install.sh") --uninstall \"\$@\"; }"
 			echo "$ALIAS_HOOK_END"
 			echo ""
 		} >>"$f"
-		log_ok "Shell aliases appended: $f"
+		log_ok "Shell helper functions appended: $f"
 	done
 }
 
 print_install_summary() {
 	local dest="$1"
 	local plist="$2"
-	local mount_script="$3"
-	local vol="$4"
-	local label="$5"
+	local launchd_script="$3"
+	local mount_script="$4"
+	local vol="$5"
+	local label="$6"
 
 	echo ""
 	echo "========== Install summary =========="
@@ -629,10 +633,10 @@ print_install_summary() {
 	echo "    • $dest/"
 	echo "    • $plist"
 	echo "    • ${HOME}/Library/LaunchAgents/  (directory ensured)"
-	echo "    • ${HOME}/.zshrc  (aliases — see below)"
+	echo "    • ${HOME}/.zshrc  (shell helpers — see below)"
 	echo "    • ${HOME}/.bash_profile  (same, for bash login shells)"
 	echo ""
-	echo "Shell aliases (after source or new terminal):"
+	echo "Shell helpers (functions; after source or new terminal):"
 	echo "    install_rclone_ondrive    → ${dest}/install.sh"
 	echo "    mount_rclone_ondrive      → ${dest}/mount_onedrive.sh"
 	echo "    unmount_rclone_onedrive   → ${dest}/unmount_onedrive.sh"
@@ -653,7 +657,8 @@ print_install_summary() {
 	echo "LaunchAgent:"
 	echo "    Label:           $label"
 	echo "    Domain:          gui/$(id -u)"
-	echo "    Runs at login:   /bin/bash $mount_script $vol"
+	echo "    Runs at login:   /bin/bash $launchd_script $vol"
+	echo "                     (waits STARTUP_MOUNT_DELAY_SEC, default 10s, then $mount_script)"
 	echo ""
 	echo "Log files (stdout/stderr from mount at login):"
 	echo "    /tmp/rclone-onedrive-mount.log"
@@ -662,7 +667,7 @@ print_install_summary() {
 	echo "Try a mount now (after source, or use full path):"
 	echo "    mount_rclone_ondrive $vol"
 	echo "    login_rclone_ondrive      # uses EXTERNAL_VOLUME_NAME from config.sh"
-	echo "    # or: $mount_script $vol"
+	echo "    # or: $mount_script $vol  (LaunchAgent uses $launchd_script)"
 	echo ""
 	local ksvc_sum
 	if ksvc_sum="$(read_keychain_service_from_config "$dest/config.sh" 2>/dev/null)" && [ -n "$ksvc_sum" ]; then
@@ -681,7 +686,7 @@ do_uninstall() {
 	rm -f "$PLIST_PATH"
 	log_ok "Removed plist: $PLIST_PATH"
 	remove_shell_alias_hooks
-	log_ok "Removed shell aliases (and legacy PATH hooks) from ~/.zshrc and ~/.bash_profile (if present)."
+	log_ok "Removed shell helper block (and legacy PATH hooks) from ~/.zshrc and ~/.bash_profile (if present)."
 	if [ -d "$DEST" ]; then
 		rm -rf "$DEST"
 		log_ok "Removed install directory: $DEST"
@@ -717,7 +722,7 @@ do_install() {
 
 	check_symlinks_in_tree "$DEST" "install directory" || exit 1
 
-	chmod +x "$DEST/mount_onedrive.sh" "$DEST/unmount_onedrive.sh" "$DEST/login.sh" "$DEST/logout.sh" "$DEST/check_rclone_config.sh" "$DEST/reset_rclone_config.sh" "$DEST/install.sh" "$DEST/setup_rclone_encryption_keychain.sh" 2>/dev/null || true
+	chmod +x "$DEST/mount_onedrive.sh" "$DEST/startup_mount_onedrive.sh" "$DEST/unmount_onedrive.sh" "$DEST/login.sh" "$DEST/logout.sh" "$DEST/check_rclone_config.sh" "$DEST/reset_rclone_config.sh" "$DEST/install.sh" "$DEST/setup_rclone_encryption_keychain.sh" 2>/dev/null || true
 
 	if [ ! -f "$DEST/config.sh" ]; then
 		if [ -f "$SRC/config.sh" ]; then
@@ -738,13 +743,14 @@ do_install() {
 
 	prompt_and_store_rclone_keychain_password "$DEST/config.sh" || exit 1
 
+	local launchd_script="${DEST}/startup_mount_onedrive.sh"
 	local mount_script="${DEST}/mount_onedrive.sh"
 	mkdir -p "${HOME}/Library/LaunchAgents"
 
 	local tmp
 	tmp="$(mktemp -t rclone-onedrive-plist.XXXXXX.plist)"
 	export INSTALL_PLIST_OUT="$tmp"
-	if ! generate_and_lint_plist "$tmp" "$mount_script" "$vol"; then
+	if ! generate_and_lint_plist "$tmp" "$launchd_script" "$vol"; then
 		rm -f "$tmp"
 		exit 1
 	fi
@@ -770,7 +776,7 @@ do_install() {
 
 	install_shell_alias_hooks "$DEST"
 
-	print_install_summary "$DEST" "$PLIST_PATH" "$mount_script" "$vol" "$LABEL"
+	print_install_summary "$DEST" "$PLIST_PATH" "$launchd_script" "$mount_script" "$vol" "$LABEL"
 }
 
 # ---- main ----

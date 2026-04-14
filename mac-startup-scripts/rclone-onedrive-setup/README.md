@@ -201,7 +201,7 @@ chmod +x check_rclone_config.sh   # if needed
 ./check_rclone_config.sh
 ```
 
-After **`install.sh`**, the alias **`check_rclone_ondrive`** runs the installed copy.
+After **`install.sh`**, the shell function **`check_rclone_ondrive`** runs the installed copy.
 
 ### Reset `rclone.conf` (start over locally)
 
@@ -212,7 +212,7 @@ chmod +x reset_rclone_config.sh   # if needed
 ./reset_rclone_config.sh
 ```
 
-After **`install.sh`**, the alias **`reset_rclone_ondrive`** runs the installed copy.
+After **`install.sh`**, the shell function **`reset_rclone_ondrive`** runs the installed copy.
 
 ### Later: token expired or re-auth
 
@@ -284,7 +284,7 @@ cd rclone-onedrive-setup
 Make the scripts executable:
 
 ```bash
-chmod +x mount_onedrive.sh unmount_onedrive.sh login.sh logout.sh check_rclone_config.sh reset_rclone_config.sh install.sh setup_rclone_encryption_keychain.sh
+chmod +x mount_onedrive.sh startup_mount_onedrive.sh unmount_onedrive.sh login.sh logout.sh check_rclone_config.sh reset_rclone_config.sh install.sh setup_rclone_encryption_keychain.sh
 ```
 
 ## 4. Create your `config.sh`
@@ -326,7 +326,7 @@ All **`REMOTE_PATHS` / `LOCAL_NAMES` / `CACHE_MAX_SIZE`** arrays must have the *
 
 Use the **exact** volume name as shown under `/Volumes/`.
 
-**Convenience wrappers:** **`./login.sh`** runs **`mount_onedrive.sh`** using **`EXTERNAL_VOLUME_NAME`** from **`config.sh`** when you omit the argument (or pass **`./login.sh MyPassport`** to override). **`./logout.sh`** does the same for **`unmount_onedrive.sh`** (safe unmount + eject). After **`install.sh`**, shell aliases **`login_rclone_ondrive`**, **`logout_rclone_onedrive`**, **`check_rclone_ondrive`**, and **`reset_rclone_ondrive`** are available.
+**Convenience wrappers:** **`./login.sh`** runs **`mount_onedrive.sh`** using **`EXTERNAL_VOLUME_NAME`** from **`config.sh`** when you omit the argument (or pass **`./login.sh MyPassport`** to override). **`./logout.sh`** does the same for **`unmount_onedrive.sh`** (safe unmount + eject). After **`install.sh`**, shell functions **`login_rclone_ondrive`**, **`logout_rclone_onedrive`**, **`check_rclone_ondrive`**, and **`reset_rclone_ondrive`** are available.
 
 Mounted paths will be:
 
@@ -436,7 +436,7 @@ To run **`mount_onedrive.sh`** automatically at login, use **`install.sh`** ([ne
 
 ## Optional: install.sh (Application Support and login mount)
 
-**`install.sh`** copies this folder to a fixed location under your **home directory**, then installs a **LaunchAgent** so **`mount_onedrive.sh`** runs **once at login** (`RunAtLoad`). Default install path:
+**`install.sh`** copies this folder to a fixed location under your **home directory**, then installs a **LaunchAgent** that runs **`startup_mount_onedrive.sh`** **once at login** (`RunAtLoad`). That script **waits 10 seconds** (so Finder and the session can settle), then runs **`mount_onedrive.sh`**. The delay is **`STARTUP_MOUNT_DELAY_SEC`** in the plist (default **10**). Default install path:
 
 ```text
 ~/Library/Application Support/rclone-onedrive-setup/
@@ -449,16 +449,16 @@ Use this **only after** [§4](#4-create-your-configsh) is correct and a **manual
 ### What it does
 
 1. **`rsync`** from the directory containing **`install.sh`** into **`~/Library/Application Support/rclone-onedrive-setup/`** (excludes `.git`, `.DS_Store`, `.cursor`, `*.swp`).
-2. **Symlink integrity:** checks every **filesystem symlink** under the **source tree** before copying, and again under the **install directory** after **`rsync`**. **Dangling** symlinks (broken targets) produce **[FAIL]** (same **`.git`** / **`.cursor`** exclusions as **`rsync`**). This is separate from **shell aliases** (step 7): aliases are not symlinks, but the installer also verifies that **`install.sh`**, **`mount_onedrive.sh`**, **`unmount_onedrive.sh`**, **`login.sh`**, **`logout.sh`**, **`check_rclone_config.sh`**, and **`reset_rclone_config.sh`** exist before appending aliases to **`~/.zshrc`** / **`~/.bash_profile`**.
+2. **Symlink integrity:** checks every **filesystem symlink** under the **source tree** before copying, and again under the **install directory** after **`rsync`**. **Dangling** symlinks (broken targets) produce **[FAIL]** (same **`.git`** / **`.cursor`** exclusions as **`rsync`**). This is separate from **shell helper functions** (step 7): those are not symlinks, but the installer also verifies that **`install.sh`**, **`mount_onedrive.sh`**, **`unmount_onedrive.sh`**, **`login.sh`**, **`logout.sh`**, **`check_rclone_config.sh`**, and **`reset_rclone_config.sh`** exist before appending helpers to **`~/.zshrc`** / **`~/.bash_profile`**.
 3. Ensures **`config.sh`** exists in the install dir (copies from your clone’s **`config.sh`**, or from **`config.example.sh`** if needed—then **edit** **`EXTERNAL_VOLUME_NAME`** and paths there).
 4. **Keychain (optional):** If **`RCLONE_CONFIG_KEYCHAIN_SERVICE`** is set in **`config.sh`**, prompts twice for the **rclone config encryption** master password and runs **`security add-generic-password`** so **`mount_onedrive.sh`** can read **`RCLONE_CONFIG_PASS`** at runtime. Skipped if the service name is empty, if **`--skip-keychain`** is passed, or if **stdin is not a TTY** (e.g. piped install — add the Keychain item manually in that case). See [§2 — Keychain](#encrypting-rcloneconf-and-macos-keychain-recommended).
-5. Writes **`~/Library/LaunchAgents/com.rclone-onedrive.mount.plist`** (override with **`--label`**) pointing at **`/bin/bash …/mount_onedrive.sh <volume>`**, with **`PATH`** including Homebrew.
+5. Writes **`~/Library/LaunchAgents/com.rclone-onedrive.mount.plist`** (override with **`--label`**) pointing at **`/bin/bash …/startup_mount_onedrive.sh <volume>`** (not **`mount_onedrive.sh`** directly), with **`PATH`**, **`STARTUP_MOUNT_DELAY_SEC=10`**, and Homebrew on **`PATH`**.
 6. Runs **`launchctl bootstrap gui/$(id -u) …`** (or **`launchctl load`** on older macOS).
-7. Appends **shell aliases** to **`~/.zshrc`** and **`~/.bash_profile`** (marked block, replaced on reinstall): **`install_rclone_ondrive`**, **`mount_rclone_ondrive`**, **`unmount_rclone_onedrive`**, **`login_rclone_ondrive`**, **`logout_rclone_onedrive`**, **`check_rclone_ondrive`**, **`reset_rclone_ondrive`**, **`uninstall_rclone_onedrive`** — each points at the scripts under the install directory so generic names are not added to **`PATH`**. Run **`source ~/.zshrc`** (or open a new tab) after installing.
+7. Appends **shell functions** (not aliases — zsh mishandles spaces in alias targets) to **`~/.zshrc`** and **`~/.bash_profile`** (marked block, replaced on reinstall): **`install_rclone_ondrive`**, **`mount_rclone_ondrive`**, **`unmount_rclone_onedrive`**, **`login_rclone_ondrive`**, **`logout_rclone_onedrive`**, **`check_rclone_ondrive`**, **`reset_rclone_ondrive`**, **`uninstall_rclone_onedrive`** — each invokes the scripts under the install directory so generic names are not added to **`PATH`**. Run **`source ~/.zshrc`** (or open a new tab) after installing.
 
 ### Dry-run (recommended first)
 
-Checks **macOS**, **`rclone`**, **`rsync`**, **`plutil`**, required source files, **symlink integrity** in the source tree (no dangling symlinks), **shell alias targets** (**`install.sh`**, **`mount_onedrive.sh`**, **`unmount_onedrive.sh`**, **`login.sh`**, **`logout.sh`**, **`check_rclone_config.sh`**, **`reset_rclone_config.sh`** present in the source tree), and that **`config.sh`** is complete: **`REMOTE_NAME`**, **`REMOTE_PATHS` / `LOCAL_NAMES` / `CACHE_MAX_SIZE`** (same length, no empty entries), and **`EXTERNAL_VOLUME_NAME`** unless you pass a **volume name** on the command line (same rules as **`mount_onedrive.sh`**). It also reports what would happen for the **Keychain** step if **`RCLONE_CONFIG_KEYCHAIN_SERVICE`** is set (or **`--skip-keychain`**). Then checks install path writability and validates a **temporary** plist with **`plutil -lint`**. **No files are copied**, **launchd** is not changed, **Keychain** is not modified, and **shell rc files** are not modified.
+Checks **macOS**, **`rclone`**, **`rsync`**, **`plutil`**, required source files, **symlink integrity** in the source tree (no dangling symlinks), **shell hook targets** (**`install.sh`**, **`mount_onedrive.sh`**, **`unmount_onedrive.sh`**, **`login.sh`**, **`logout.sh`**, **`check_rclone_config.sh`**, **`reset_rclone_config.sh`** present in the source tree), and that **`config.sh`** is complete: **`REMOTE_NAME`**, **`REMOTE_PATHS` / `LOCAL_NAMES` / `CACHE_MAX_SIZE`** (same length, no empty entries), and **`EXTERNAL_VOLUME_NAME`** unless you pass a **volume name** on the command line (same rules as **`mount_onedrive.sh`**). It also reports what would happen for the **Keychain** step if **`RCLONE_CONFIG_KEYCHAIN_SERVICE`** is set (or **`--skip-keychain`**). Then checks install path writability and validates a **temporary** plist with **`plutil -lint`**. **No files are copied**, **launchd** is not changed, **Keychain** is not modified, and **shell rc files** are not modified.
 
 If **`rclone`** is missing, the script exits with **[FAIL]** and prints install hints: **`brew install rclone`** (macOS) and the official installer for Linux/macOS/BSD:
 
@@ -500,7 +500,7 @@ If you used **`--dest`** during install, pass the **same** path:
 ./install.sh --uninstall --dest /your/custom/path
 ```
 
-Removes the LaunchAgent plist, unloads it, strips the **alias** block (and any legacy **PATH** block from older installs) from **`~/.zshrc`** and **`~/.bash_profile`**, and deletes the install directory.
+Removes the LaunchAgent plist, unloads it, strips the **rclone-onedrive-setup** shell block (and any legacy **PATH** block from older installs) from **`~/.zshrc`** and **`~/.bash_profile`**, and deletes the install directory.
 
 ### Caveats
 
@@ -511,7 +511,7 @@ Removes the LaunchAgent plist, unloads it, strips the **alias** block (and any l
 
 ## Optional: Manual LaunchAgent plist (advanced)
 
-A **LaunchAgent** runs **`mount_onedrive.sh`** once when you **log in** (`RunAtLoad`). Use the steps below only if you **do not** use **`install.sh`**.
+A **LaunchAgent** should run **`startup_mount_onedrive.sh`** (which **sleeps** then calls **`mount_onedrive.sh`**) once when you **log in** (`RunAtLoad`). Use the steps below only if you **do not** use **`install.sh`**.
 
 ### Prerequisites
 
@@ -544,10 +544,11 @@ Open the new file in a text editor and set:
 | Key / field | What to put |
 |-------------|-------------|
 | **`Label`** | Same identifier you used in the filename, e.g. `com.yourname.rclone-onedrive`. |
-| **`ProgramArguments`** | **`/bin/bash`**, then the **absolute path** to **`mount_onedrive.sh`**, then your **volume name** (same as for manual mount). Example: `/Users/you/projects/rclone-onedrive-setup/mount_onedrive.sh`, `MyPassport`. |
+| **`ProgramArguments`** | **`/bin/bash`**, then the **absolute path** to **`startup_mount_onedrive.sh`**, then your **volume name**. (Do **not** point **launchd** directly at **`mount_onedrive.sh`** if you want the login delay; the startup wrapper calls **`mount_onedrive.sh`** after **`STARTUP_MOUNT_DELAY_SEC`**.) |
 | **`EnvironmentVariables` → `PATH`** | Leave as-is unless `which rclone` is outside `/opt/homebrew/bin` and `/usr/local/bin`; if needed, prepend that directory. |
+| **`EnvironmentVariables` → `STARTUP_MOUNT_DELAY_SEC`** | Seconds to wait at login before **`mount_onedrive.sh`** (default **`10`**). Increase if the disk appears late; set **`0`** only if you accept mounting immediately. |
 
-The template invokes **`/bin/bash …/mount_onedrive.sh …`** so **`rclone`** is found via **`PATH`** and you do not depend on the file mode bit for **launchd**.
+The template invokes **`/bin/bash …/startup_mount_onedrive.sh …`** and sets **`STARTUP_MOUNT_DELAY_SEC`** (seconds to wait before **`mount_onedrive.sh`**) so **`rclone`** is found via **`PATH`** and you do not depend on the file mode bit for **launchd**.
 
 Validate XML (optional):
 

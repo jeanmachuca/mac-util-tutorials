@@ -12,11 +12,11 @@
     <key>Label</key>
     <string>CHANGE_ME_LABEL</string>
 
-    <!-- Run via bash so the script does not need execute bit for launchd -->
+    <!-- Run via bash: startup script sleeps ~10s (Finder/session), then calls mount_onedrive.sh -->
     <key>ProgramArguments</key>
     <array>
         <string>/bin/bash</string>
-        <string>CHANGE_ME_FULL_PATH_TO/mount_onedrive.sh</string>
+        <string>CHANGE_ME_FULL_PATH_TO/startup_mount_onedrive.sh</string>
         <string>CHANGE_ME_VOLUME_NAME</string>
     </array>
 
@@ -28,6 +28,8 @@
     <dict>
         <key>PATH</key>
         <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+        <key>STARTUP_MOUNT_DELAY_SEC</key>
+        <string>10</string>
     </dict>
 
     <key>StandardOutPath</key>
