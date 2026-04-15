@@ -66,3 +66,4 @@ If **`CACHE_DIR`** is under **`/Volumes/`** and that volume is **not** mounted, 
 ## See also
 
 - **[mount-volume-override.md](mount-volume-override.md)** — put **some** OneDrive mount points on a **different data volume** (e.g. APFS vs exFAT) using **`MOUNT_VOLUME_OVERRIDE`**; that is separate from **`CACHE_DIR`** (cache only).
+- **[external-disk-exfat-apfs-work-cache-example.md](external-disk-exfat-apfs-work-cache-example.md)** — **three** volumes on one external disk: **exFAT** default + **APFS** for selected rows + **APFS** cache (generic example names).

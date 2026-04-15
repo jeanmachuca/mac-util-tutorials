@@ -15,7 +15,7 @@ So you can split **different OneDrive folders** onto **different disks or partit
 
 ## When this is useful
 
-- **Mixed filesystems on one physical disk** — e.g. a small **APFS** volume for paths that need **macOS-native** behavior (metadata, bundles) and a large **exFAT** volume for cross-platform bulk storage and other mounts (see [apfs-cache-partition-exfat-example.md](apfs-cache-partition-exfat-example.md) for cache layout; this doc is about **where the FUSE mount points live**, not only cache).
+- **Mixed filesystems on one physical disk** — e.g. a small **APFS** volume for paths that need **macOS-native** behavior (metadata, bundles) and a large **exFAT** volume for cross-platform bulk storage and other mounts (see [apfs-cache-partition-exfat-example.md](apfs-cache-partition-exfat-example.md) for cache layout; this doc is about **where the FUSE mount points live**, not only cache). A **three-volume** layout (exFAT + APFS work + APFS cache) is sketched in [external-disk-exfat-apfs-work-cache-example.md](external-disk-exfat-apfs-work-cache-example.md).
 - **Multiple external volumes** — e.g. **`EXT1TB`** for most mounts and **`VideoSSD`** for a heavy **video** folder, all in one config.
 - **Same machine, different disks** — default argument to **`mount_onedrive.sh`** is still the “main” volume; overrides pick **other** `/Volumes/...` names when needed.
 

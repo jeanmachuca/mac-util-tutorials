@@ -28,6 +28,7 @@ LOCAL_NAMES=(
 # Use "" to use <DriveName> from mount_onedrive.sh / EXTERNAL_VOLUME_NAME for that row.
 # Non-empty: mount that row under /Volumes/<name>/OneDrive/<LOCAL_NAMES[i]>/
 # See docs/mount-volume-override.md (APFS vs exFAT, multiple disks).
+# Three-volume example (exFAT + APFS work + APFS cache): docs/external-disk-exfat-apfs-work-cache-example.md
 MOUNT_VOLUME_OVERRIDE=(
   ""
   ""
