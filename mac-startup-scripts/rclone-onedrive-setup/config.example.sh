@@ -24,6 +24,15 @@ LOCAL_NAMES=(
   "Photos"
 )
 
+# Optional: per-mount data volume (Finder name under /Volumes/). Same length as REMOTE_PATHS.
+# Use "" to use <DriveName> from mount_onedrive.sh / EXTERNAL_VOLUME_NAME for that row.
+# Non-empty: mount that row under /Volumes/<name>/OneDrive/<LOCAL_NAMES[i]>/
+# See docs/mount-volume-override.md (APFS vs exFAT, multiple disks).
+MOUNT_VOLUME_OVERRIDE=(
+  ""
+  ""
+)
+
 # VFS cache cap per mount — one value per REMOTE_PATHS/LOCAL_NAMES entry (passed as
 # --vfs-cache-max-size). With CACHE_DIR on a small APFS partition, sum of caps should
 # fit that volume with headroom. See docs/apfs-cache-partition-exfat-example.md

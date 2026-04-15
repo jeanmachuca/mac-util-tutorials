@@ -309,13 +309,14 @@ Edit `config.sh` so that:
 - **`REMOTE_NAME`** matches the name you used in `rclone config`.
 - **`EXTERNAL_VOLUME_NAME`** is the **exact** name of your external disk in Finder / `/Volumes/` (for example `MyPassport`). Used by **`install.sh`** for the LaunchAgent and by **`login.sh`** / **`logout.sh`** when you run them with **no** arguments (see [§5](#5-mount)).
 - **`REMOTE_PATHS`** lists folders **on OneDrive** (as returned by `rclone lsd`).
-- **`LOCAL_NAMES`** lists the folder names you want under `/Volumes/<YourDrive>/OneDrive/` on the external disk.
+- **`LOCAL_NAMES`** lists the folder names you want under `/Volumes/<YourDrive>/OneDrive/` on the external disk (unless you use **`MOUNT_VOLUME_OVERRIDE`** for a row).
+- **`MOUNT_VOLUME_OVERRIDE`** (optional) — same length as **`REMOTE_PATHS`**: per row, **`""`** uses **`<YourDrive>`** from **`mount_onedrive.sh`**; a non-empty string mounts that row under **`/Volumes/<that>/OneDrive/...`** instead (multiple disks or APFS + exFAT data volumes). See **[docs/mount-volume-override.md](docs/mount-volume-override.md)**.
 - **`CACHE_MAX_SIZE`** sets a per-mount VFS cache limit (for example `50G`).
 - Optionally set **`CACHE_DIR`** to send the **VFS cache** to another path (for example a **dedicated APFS partition** on the same external disk while **OneDrive** folders stay on **exFAT**). See **[docs/apfs-cache-partition-exfat-example.md](docs/apfs-cache-partition-exfat-example.md)** (example: **1 TB** disk, **50 GB** cache partition).
 - Optionally set **`RCLONE_BIN`** to the **full path** of **`rclone`** if **`command -v rclone`** fails (for example under **LaunchAgent** with a minimal **`PATH`**). Otherwise the scripts use the same path **`command -v rclone`** would print (not **`which`**, which is less reliable in non-interactive shells).
 - If you use **encrypted `rclone.conf`**, set **`RCLONE_CONFIG_KEYCHAIN_SERVICE`** (and optionally **`RCLONE_CONFIG_KEYCHAIN_ACCOUNT`**) as in [§2 — Encrypting `rclone.conf` and macOS Keychain](#encrypting-rcloneconf-and-macos-keychain-recommended). Never put the master password in **`config.sh`**.
 
-All **`REMOTE_PATHS` / `LOCAL_NAMES` / `CACHE_MAX_SIZE`** arrays must have the **same number** of entries. You can use one folder or many.
+All **`REMOTE_PATHS` / `LOCAL_NAMES` / `CACHE_MAX_SIZE`** arrays must have the **same number** of entries; **`MOUNT_VOLUME_OVERRIDE`** must match too if you define it (or omit it for all-default). You can use one folder or many.
 
 ## 5. Mount
 
@@ -335,8 +336,11 @@ Use the **exact** volume name as shown under `/Volumes/`.
 Mounted paths will be:
 
 ```text
-/Volumes/<DriveName>/OneDrive/<LOCAL_NAMES entries>
+/Volumes/<DriveName>/OneDrive/<LOCAL_NAMES entries>    # default rows
+/Volumes/<OtherVolume>/OneDrive/<LOCAL_NAMES entry>    # rows with MOUNT_VOLUME_OVERRIDE set
 ```
+
+See **[docs/mount-volume-override.md](docs/mount-volume-override.md)** when some rows use a **different** volume than **`DriveName`**.
 
 **Running `mount_onedrive.sh` more than once:** each run **`umount`s** each configured target (if mounted), then starts **`rclone`** again — so it behaves like **remount**, not stacking mounts. **`--no-daemon`** (LaunchAgent) vs default **`--daemon`** and overlapping runs are explained in **[docs/running-mount-onedrive-twice.md](docs/running-mount-onedrive-twice.md)**.
 
@@ -369,7 +373,7 @@ You can **drag a mounted folder** (for example `.../OneDrive/Documents`) into th
 
 If you **just copied large files to OneDrive** through the mount, use **Activity Monitor** as in **[After large copies](#after-large-copies-when-is-network-idle-enough)** before relying on “copy finished” alone.
 
-1. **Quit or close files** that are using anything under `/Volumes/<YourDrive>/OneDrive/` (editors, media apps, terminals with `cd` into those paths, and files opened from a **Finder sidebar** favorite that points there).
+1. **Quit or close files** that are using anything under your configured mount paths — **`/Volumes/<YourDrive>/OneDrive/...`** and any **`/Volumes/<override>/OneDrive/...`** from **`MOUNT_VOLUME_OVERRIDE`** (editors, media apps, terminals with `cd` into those paths, and files opened from a **Finder sidebar** favorite that points there).
 2. Run **`unmount_onedrive.sh`** with your volume name (same name you used for `mount_onedrive.sh`), or **`./logout.sh`** if **`EXTERNAL_VOLUME_NAME`** is set in **`config.sh`**. Add **`--no-eject`** to unmount **`rclone`** only and **skip** **`diskutil eject`** (for example when another partition on the same physical disk must stay mounted):
 
 ```bash
@@ -385,7 +389,7 @@ If you **just copied large files to OneDrive** through the mount, use **Activity
 
 ### What `unmount_onedrive.sh` does
 
-In order: **`umount`** on each direct subfolder under `.../OneDrive/` (your configured mount points), a short wait, **`pkill`** only for `rclone mount` processes whose command line references **`/Volumes/<YourDrive>/OneDrive`** (other `rclone` jobs on the Mac are left alone), another wait, a second **`umount`** pass, then **`diskutil eject /Volumes/<YourDrive>`** — **unless** you passed **`--no-eject`**, in which case the script stops after unmounting **`rclone`** and does **not** eject the volume.
+It reads **`config.sh`**, **`umount`s** each configured mount point (respecting **`MOUNT_VOLUME_OVERRIDE`**), waits, **`pkill`s** `rclone mount` for each **distinct** **`/Volumes/<vol>/OneDrive`** used by your config, waits again, **`umount`s** again, then runs **`diskutil eject`** on **each distinct** data volume — **unless** **`--no-eject`**. Pass the **same** **`<DriveName>`** you use with **`mount_onedrive.sh`** (rows with an empty override use that name). Details: **[docs/mount-volume-override.md](docs/mount-volume-override.md)**.
 
 ### Finder eject: what to avoid
 

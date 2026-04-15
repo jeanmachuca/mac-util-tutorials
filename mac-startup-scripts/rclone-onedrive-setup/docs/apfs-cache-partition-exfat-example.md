@@ -62,3 +62,7 @@ If **`CACHE_DIR`** is under **`/Volumes/`** and that volume is **not** mounted, 
 
 - **Same physical disk**: cache and data still **share** the USB/NVMe bandwidth; this layout mainly helps **filesystem fit**, **cache bounds**, and **sparing internal SSD**, not doubling throughput.
 - **Unplugging the disk** while mounts are active is still unsafe — use **`unmount_onedrive.sh`** / **`logout.sh`** first (see README **§6**).
+
+## See also
+
+- **[mount-volume-override.md](mount-volume-override.md)** — put **some** OneDrive mount points on a **different data volume** (e.g. APFS vs exFAT) using **`MOUNT_VOLUME_OVERRIDE`**; that is separate from **`CACHE_DIR`** (cache only).

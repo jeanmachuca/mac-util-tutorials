@@ -212,6 +212,10 @@ validate_config_sh() {
 			echo "CACHE_MAX_SIZE must have the same number of entries as REMOTE_PATHS ($n)."
 			exit 1
 		fi
+		if [ -n "${MOUNT_VOLUME_OVERRIDE+x}" ] && [ "${#MOUNT_VOLUME_OVERRIDE[@]}" -gt 0 ] && [ "${#MOUNT_VOLUME_OVERRIDE[@]}" -ne "$n" ]; then
+			echo "MOUNT_VOLUME_OVERRIDE must have $n entries (one per REMOTE_PATHS row), or be omitted for all-default."
+			exit 1
+		fi
 
 		local i=0
 		while [ "$i" -lt "$n" ]; do

@@ -123,15 +123,36 @@ if [ "$n" -ne "${#LOCAL_NAMES[@]}" ] || [ "$n" -ne "${#CACHE_MAX_SIZE[@]}" ]; th
     exit 1
 fi
 
-DRIVE_NAME=$1
-BASE_PATH="/Volumes/$DRIVE_NAME/OneDrive"
-
-if [ ! -d "/Volumes/$DRIVE_NAME" ]; then
-    echo "Error: Drive /Volumes/$DRIVE_NAME not found."
-    exit 1
+if [ -z "${MOUNT_VOLUME_OVERRIDE+x}" ] || [ "${#MOUNT_VOLUME_OVERRIDE[@]}" -eq 0 ]; then
+	MOUNT_VOLUME_OVERRIDE=()
+	_j=0
+	while [ "$_j" -lt "$n" ]; do
+		MOUNT_VOLUME_OVERRIDE+=("")
+		_j=$((_j + 1))
+	done
+elif [ "${#MOUNT_VOLUME_OVERRIDE[@]}" -ne "$n" ]; then
+	echo "config.sh: MOUNT_VOLUME_OVERRIDE must have the same number of entries as REMOTE_PATHS ($n), or omit it for all-default."
+	exit 1
 fi
 
-echo "Starting rclone mounts on $DRIVE_NAME (using $RCLONE)..."
+DRIVE_NAME=$1
+
+# Ensure default volume and every non-empty override volume exist.
+if [ ! -d "/Volumes/$DRIVE_NAME" ]; then
+	echo "Error: Drive /Volumes/$DRIVE_NAME not found."
+	exit 1
+fi
+_i=0
+while [ "$_i" -lt "$n" ]; do
+	_ov="${MOUNT_VOLUME_OVERRIDE[$_i]}"
+	if [ -n "$_ov" ] && [ ! -d "/Volumes/$_ov" ]; then
+		echo "Error: MOUNT_VOLUME_OVERRIDE volume not found: /Volumes/$_ov (row $((_i + 1)))"
+		exit 1
+	fi
+	_i=$((_i + 1))
+done
+
+echo "Starting rclone mounts (default volume: $DRIVE_NAME, using $RCLONE)..."
 
 i=0
 pids=()
@@ -139,7 +160,8 @@ while [ "$i" -lt "$n" ]; do
 	remote="${REMOTE_PATHS[$i]}"
 	local_name="${LOCAL_NAMES[$i]}"
 	cache="${CACHE_MAX_SIZE[$i]}"
-	target="$BASE_PATH/$local_name"
+	_vol="${MOUNT_VOLUME_OVERRIDE[$i]:-$DRIVE_NAME}"
+	target="/Volumes/$_vol/OneDrive/$local_name"
 
 	umount "$target" 2>/dev/null || true
 	mkdir -p "$target"
@@ -163,9 +185,17 @@ while [ "$i" -lt "$n" ]; do
 done
 
 if [ "$USE_DAEMON" -eq 1 ]; then
-	echo "Mounts active under $BASE_PATH"
+	echo "Mounts active:"
 else
-	echo "Mounts active under $BASE_PATH (persistent — waiting on rclone; use under launchd)"
+	echo "Mounts active (persistent — waiting on rclone; use under launchd):"
+fi
+_li=0
+while [ "$_li" -lt "$n" ]; do
+	_vl="${MOUNT_VOLUME_OVERRIDE[$_li]:-$DRIVE_NAME}"
+	echo "  /Volumes/$_vl/OneDrive/${LOCAL_NAMES[$_li]}"
+	_li=$((_li + 1))
+done
+if [ "$USE_DAEMON" -eq 0 ]; then
 	for pid in "${pids[@]}"; do
 		wait "$pid"
 	done
