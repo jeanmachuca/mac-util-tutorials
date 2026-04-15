@@ -40,9 +40,16 @@ After plugging the disk in, you should see **two** entries under **`/Volumes/`**
    CACHE_DIR="/Volumes/RcloneCache"
    ```
 
-3. Set **`CACHE_MAX_SIZE`** so the **sum** of your per-mount caps (and real usage) fits **inside** the **50 GB** cache partition, with **headroom** for macOS and rclone (do not plan to use the full 50 GB for cache alone). For example, with **one** mount you might use **`40G`**; with **several** mounts, ensure the **combined** caps stay below what you are willing to reserve on that partition.
+3. Set **`CACHE_MAX_SIZE`** (see **[Cache max size treatment](#cache-max-size-treatment)** below).
 
 The installer and **`mount_onedrive.sh`** pass **`--cache-dir "$CACHE_DIR"`** when **`CACHE_DIR`** is set (see **`config.example.sh`**).
+
+### Cache max size treatment
+
+- **One entry per mount:** **`CACHE_MAX_SIZE`** is parallel to **`REMOTE_PATHS`** and **`LOCAL_NAMES`** — same number of entries. Each value is passed to **`rclone mount`** as **`--vfs-cache-max-size`** for **that** mount only (e.g. first row → first remote folder).
+- **Small cache partition:** Each cap is an **upper bound** for that mount’s VFS cache, not a pre-allocation. For planning, treat **the sum of all caps** as the **worst-case** stress on the cache volume (rclone also evicts under load, but open files and bursts matter). On a **50 GB** APFS cache volume, keep the **combined** caps **plus headroom** below **50 GB** (for example three mounts at **`15G`** each, not three at **`50G`**).
+- **After you change sizes:** Unmount, edit **`config.sh`**, mount again. New caps apply on the **next** start; **existing files** under **`CACHE_DIR`** may remain until **rclone** evicts them under the new limits (they are not the cloud copy).
+- **Adding more `LOCAL_NAMES`:** Each extra mount adds **another** cache budget line and more **`vfs/…`** / **`vfsMeta/…`** usage under **`CACHE_DIR`**. Increase **`CACHE_MAX_SIZE`** length accordingly and re-check the **combined** caps against the APFS partition size.
 
 ## Order of operations
 

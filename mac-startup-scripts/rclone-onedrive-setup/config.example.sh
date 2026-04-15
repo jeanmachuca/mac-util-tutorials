@@ -24,7 +24,9 @@ LOCAL_NAMES=(
   "Photos"
 )
 
-# VFS cache cap per mount (e.g. 10G, 500M)
+# VFS cache cap per mount — one value per REMOTE_PATHS/LOCAL_NAMES entry (passed as
+# --vfs-cache-max-size). With CACHE_DIR on a small APFS partition, sum of caps should
+# fit that volume with headroom. See docs/apfs-cache-partition-exfat-example.md
 CACHE_MAX_SIZE=(
   "50G"
   "10G"
