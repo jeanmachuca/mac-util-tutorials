@@ -34,6 +34,7 @@ So you can split **different OneDrive folders** onto **different disks or partit
 | **`--no-eject` with multiple data volumes** | Skips **all** `diskutil eject` calls; eject manually when appropriate. |
 | **Ejecting one partition removes the whole USB disk** | On some enclosures, **`diskutil eject`** on the first volume **unmounts the entire device**, so **`/Volumes/<other>`** disappears before the script reaches it. **`unmount_onedrive.sh`** then **skips** eject for paths that are **already gone** (not an error). |
 | **LaunchAgent** | Still passes **one** volume name (usually **`EXTERNAL_VOLUME_NAME`**); overrides in **`MOUNT_VOLUME_OVERRIDE`** do **not** change that argument—they only change **which rows** use other volumes. |
+| **Final Cut Pro / consolidated libraries on an APFS override volume** | **`/Volumes/<override>/OneDrive/…`** is still **`rclone mount` + FUSE**, not native local disk—**open** **`.fcpbundle`** libraries (including **consolidated**) there often **stall** or misbehave. Put **active** libraries **on the same APFS volume but outside `OneDrive/`** (e.g. **`/Volumes/MyWorkAPFS/Final Cut Libraries/…`**); copy the **closed** bundle to OneDrive when you want it **in the cloud**. See [external-disk-exfat-apfs-work-cache-example.md](external-disk-exfat-apfs-work-cache-example.md#fcp-libraries-vs-onedrive-mount). |
 
 ## Omitting the array (backward compatible)
 

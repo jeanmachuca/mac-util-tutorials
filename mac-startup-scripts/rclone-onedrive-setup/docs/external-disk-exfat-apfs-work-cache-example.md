@@ -76,8 +76,21 @@ Mount with:
 ## Caveats
 
 - **Same USB/NVMe link** for all three: throughput is **shared**; this layout optimizes **filesystem fit** and **roles**, not raw bandwidth.
-- **Pro app libraries** (for example **Final Cut Pro** `.fcpbundle`) are still best kept as **local APFS projects** per vendor guidance; cloud-backed **`rclone`** paths on **WorkAPFS** address **different** needs (OneDrive-as-a-folder) than a **native library** on **internal** storage.
 - **`CACHE_MAX_SIZE`**: keep the **sum** of caps within **RcloneCache** size with **headroom** ([Cache max size treatment](apfs-cache-partition-exfat-example.md#cache-max-size-treatment)).
+
+<a id="fcp-libraries-vs-onedrive-mount"></a>
+
+### Final Cut Pro, consolidated libraries, and “live in the cloud”
+
+A path like **`/Volumes/WorkAPFS/OneDrive/…`** is still a **`rclone mount`** (FUSE → OneDrive), even though **WorkAPFS** is a **real APFS** partition. The **partition format** does **not** turn that folder into plain local disk for apps that expect **local** semantics (heavy metadata, databases, tight I/O).
+
+- **Do not** place an **open** **Final Cut Pro** library (including **consolidated** libraries) **under** **`…/OneDrive/…`** on any override volume if you want stable behavior—FCP can **hang** or misbehave there.
+- **Do** keep **active** **`.fcpbundle`** trees on the **same** APFS work volume **beside** `OneDrive`, e.g. **`/Volumes/WorkAPFS/Final Cut Libraries/MyProject.fcpbundle`** — native APFS for the bundle, **no** `rclone` in that path.
+- **“Consolidated in the cloud”** is still realistic: **quit FCP**, then **`rclone copy`** (or Finder copy to a mounted OneDrive folder) the **closed** library to OneDrive for **archive / backup**. You are not editing from the cloud path; you are **publishing** a **point-in-time** consolidated bundle there.
+
+The same distinction applies to other **pro-app bundles** you would avoid on a **network** mount: keep **live** projects **outside** **`…/OneDrive/…`** on **native** APFS; use **`rclone`** paths under **`OneDrive/`** for **ingest, delivery, and archived copies** only.
+
+This edge case is also summarized in **[mount-volume-override.md](mount-volume-override.md)**.
 
 ## See also
 
