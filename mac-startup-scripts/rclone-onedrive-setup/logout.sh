@@ -6,16 +6,30 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CONFIG="${SCRIPT_DIR}/config.sh"
 
 usage() {
-	echo "Usage: ./logout.sh [DriveName]"
-	echo "  With no argument, uses EXTERNAL_VOLUME_NAME from config.sh."
+	echo "Usage: ./logout.sh [--no-eject] [DriveName]"
+	echo "  With no drive argument, uses EXTERNAL_VOLUME_NAME from config.sh."
+	echo "  --no-eject   Unmount rclone only; do not run diskutil eject (see unmount_onedrive.sh)."
 	echo "  Example: ./logout.sh"
 	echo "  Example: ./logout.sh MyPassport"
+	echo "  Example: ./logout.sh --no-eject"
 	exit 0
 }
 
-case "${1:-}" in
--h | --help) usage ;;
-esac
+POSITIONAL=()
+NO_EJECT=0
+for arg in "$@"; do
+	case "$arg" in
+	--no-eject) NO_EJECT=1 ;;
+	-h | --help) usage ;;
+	*) POSITIONAL+=("$arg") ;;
+	esac
+done
+
+if [ "${#POSITIONAL[@]}" -gt 1 ]; then
+	echo "Too many arguments." >&2
+	echo "Usage: ./logout.sh [--no-eject] [DriveName]" >&2
+	exit 1
+fi
 
 if [ ! -f "$CONFIG" ]; then
 	echo "Missing config.sh — copy and edit the example:" >&2
@@ -29,11 +43,15 @@ set +u
 source "$CONFIG"
 set -u
 
-VOL="${1:-${EXTERNAL_VOLUME_NAME:-}}"
+VOL="${POSITIONAL[0]:-${EXTERNAL_VOLUME_NAME:-}}"
 if [ -z "$VOL" ]; then
 	echo "No drive name. Set EXTERNAL_VOLUME_NAME in config.sh or pass:" >&2
 	echo "  ./logout.sh MyPassport" >&2
 	exit 1
 fi
 
-exec "$SCRIPT_DIR/unmount_onedrive.sh" "$VOL"
+if [ "$NO_EJECT" -eq 1 ]; then
+	exec "$SCRIPT_DIR/unmount_onedrive.sh" --no-eject "$VOL"
+else
+	exec "$SCRIPT_DIR/unmount_onedrive.sh" "$VOL"
+fi

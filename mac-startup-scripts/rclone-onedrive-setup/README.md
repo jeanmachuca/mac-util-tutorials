@@ -330,7 +330,7 @@ By default this uses **`rclone mount … --daemon`** (the script returns after s
 
 Use the **exact** volume name as shown under `/Volumes/`.
 
-**Convenience wrappers:** **`./login.sh`** runs **`mount_onedrive.sh`** using **`EXTERNAL_VOLUME_NAME`** from **`config.sh`** when you omit the argument (or pass **`./login.sh MyPassport`** to override). **`./logout.sh`** does the same for **`unmount_onedrive.sh`** (safe unmount + eject). After **`install.sh`**, shell functions **`login_rclone_onedrive`**, **`logout_rclone_onedrive`**, **`check_rclone_onedrive`**, and **`reset_rclone_onedrive`** are available (along with install / mount / unmount helpers — run **`rclone_onedrive_help`** after **`source ~/.zshrc`** to print the full list).
+**Convenience wrappers:** **`./login.sh`** runs **`mount_onedrive.sh`** using **`EXTERNAL_VOLUME_NAME`** from **`config.sh`** when you omit the argument (or pass **`./login.sh MyPassport`** to override). **`./logout.sh`** does the same for **`unmount_onedrive.sh`** (safe unmount + **`diskutil eject`** by default; use **`./logout.sh --no-eject`** to tear down **`rclone`** only and leave the volume mounted). After **`install.sh`**, shell functions **`login_rclone_onedrive`**, **`logout_rclone_onedrive`**, **`check_rclone_onedrive`**, and **`reset_rclone_onedrive`** are available (along with install / mount / unmount helpers — run **`rclone_onedrive_help`** after **`source ~/.zshrc`** to print the full list).
 
 Mounted paths will be:
 
@@ -370,26 +370,28 @@ You can **drag a mounted folder** (for example `.../OneDrive/Documents`) into th
 If you **just copied large files to OneDrive** through the mount, use **Activity Monitor** as in **[After large copies](#after-large-copies-when-is-network-idle-enough)** before relying on “copy finished” alone.
 
 1. **Quit or close files** that are using anything under `/Volumes/<YourDrive>/OneDrive/` (editors, media apps, terminals with `cd` into those paths, and files opened from a **Finder sidebar** favorite that points there).
-2. Run **`unmount_onedrive.sh`** with your volume name (same name you used for `mount_onedrive.sh`), or **`./logout.sh`** if **`EXTERNAL_VOLUME_NAME`** is set in **`config.sh`**:
+2. Run **`unmount_onedrive.sh`** with your volume name (same name you used for `mount_onedrive.sh`), or **`./logout.sh`** if **`EXTERNAL_VOLUME_NAME`** is set in **`config.sh`**. Add **`--no-eject`** to unmount **`rclone`** only and **skip** **`diskutil eject`** (for example when another partition on the same physical disk must stay mounted):
 
 ```bash
 ./unmount_onedrive.sh MyPassport
+./unmount_onedrive.sh --no-eject MyPassport
 # or, if EXTERNAL_VOLUME_NAME matches:
 ./logout.sh
+./logout.sh --no-eject
 ```
 
-3. Wait until the script finishes. On success it has already run **`diskutil eject`**—you do **not** need a separate Finder eject, and you can **unplug** once you see the success message.
+3. Wait until the script finishes. On success (without **`--no-eject`**) it has already run **`diskutil eject`**—you do **not** need a separate Finder eject, and you can **unplug** once you see the success message. With **`--no-eject`**, the data volume may still appear in Finder; eject or unplug only when **no** partition you care about is still in use.
 4. If the script reports **eject failed**, do **not** yank the cable. See [Troubleshooting](#troubleshooting) and fix stuck mounts before trying again.
 
 ### What `unmount_onedrive.sh` does
 
-In order: **`umount`** on each direct subfolder under `.../OneDrive/` (your configured mount points), a short wait, **`pkill`** only for `rclone mount` processes whose command line references **`/Volumes/<YourDrive>/OneDrive`** (other `rclone` jobs on the Mac are left alone), another wait, a second **`umount`** pass, then **`diskutil eject /Volumes/<YourDrive>`**.
+In order: **`umount`** on each direct subfolder under `.../OneDrive/` (your configured mount points), a short wait, **`pkill`** only for `rclone mount` processes whose command line references **`/Volumes/<YourDrive>/OneDrive`** (other `rclone` jobs on the Mac are left alone), another wait, a second **`umount`** pass, then **`diskutil eject /Volumes/<YourDrive>`** — **unless** you passed **`--no-eject`**, in which case the script stops after unmounting **`rclone`** and does **not** eject the volume.
 
 ### Finder eject: what to avoid
 
 - **Do not rely on Finder’s eject icon first** while `rclone` is still running. Finder may say the disk is **in use**—that is expected. The fix is to **run `unmount_onedrive.sh`**, not to fight Finder.
 - **Do not click “Force Eject”** to bypass the warning while cloud mounts are still active. That path **forces** FUSE teardown and is exactly the class of abrupt disconnect that risks **corrupted partial writes** and **unhappy apps**.
-- After **`unmount_onedrive.sh`** succeeds, the volume should already be **ejected**. If it still appears in Finder, run the script again or check Activity Monitor for stray **`rclone`** before doing anything drastic.
+- After **`unmount_onedrive.sh`** succeeds **without** **`--no-eject`**, the volume should already be **ejected**. If it still appears in Finder, run the script again or check Activity Monitor for stray **`rclone`** before doing anything drastic. If you used **`--no-eject`** on purpose, **eject** in Finder or **`diskutil`** when you are ready to disconnect the hardware.
 
 ### What not to do (quick reference)
 
