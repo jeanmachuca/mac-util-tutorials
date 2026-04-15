@@ -75,9 +75,12 @@ uniq_vols=()
 add_uniq_vol() {
 	local v="$1"
 	local u
-	for u in "${uniq_vols[@]}"; do
-		[ "$u" = "$v" ] && return 0
-	done
+	# With set -u, "${uniq_vols[@]}" errors when the array is still empty (first call).
+	if ((${#uniq_vols[@]} > 0)); then
+		for u in "${uniq_vols[@]}"; do
+			[ "$u" = "$v" ] && return 0
+		done
+	fi
 	uniq_vols+=("$v")
 	return 0
 }
@@ -121,6 +124,10 @@ if [ "$NO_EJECT" -eq 1 ]; then
 fi
 
 for vol in "${uniq_vols[@]}"; do
+	if [ ! -d "/Volumes/$vol" ]; then
+		echo "Skipping eject for $vol — volume is not mounted (often already removed when another partition on the same USB disk was ejected)."
+		continue
+	fi
 	echo "Ejecting $vol..."
 	if diskutil eject "/Volumes/$vol"; then
 		echo "Safe to disconnect $vol."

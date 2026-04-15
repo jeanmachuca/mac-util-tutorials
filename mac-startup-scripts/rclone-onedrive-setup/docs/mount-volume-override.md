@@ -32,6 +32,7 @@ So you can split **different OneDrive folders** onto **different disks or partit
 | **Duplicate `LOCAL_NAMES` on the same volume** | Two rows with the same **`LOCAL_NAMES`** entry and the **same** resolved volume → **same mountpoint**; the second mount would **collide** with the first. Use **unique** folder names per volume, or different volumes. |
 | **Finder / favorites** | Each row may point to a **different** `/Volumes/...` path; sidebar shortcuts must match **actual** paths after mount. |
 | **`--no-eject` with multiple data volumes** | Skips **all** `diskutil eject` calls; eject manually when appropriate. |
+| **Ejecting one partition removes the whole USB disk** | On some enclosures, **`diskutil eject`** on the first volume **unmounts the entire device**, so **`/Volumes/<other>`** disappears before the script reaches it. **`unmount_onedrive.sh`** then **skips** eject for paths that are **already gone** (not an error). |
 | **LaunchAgent** | Still passes **one** volume name (usually **`EXTERNAL_VOLUME_NAME`**); overrides in **`MOUNT_VOLUME_OVERRIDE`** do **not** change that argument—they only change **which rows** use other volumes. |
 
 ## Omitting the array (backward compatible)
