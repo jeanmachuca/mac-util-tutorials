@@ -218,10 +218,10 @@ validate_config_sh() {
 		fi
 
 		local i=0
+		local empty_remote=0
 		while [ "$i" -lt "$n" ]; do
 			if [ -z "${REMOTE_PATHS[$i]:-}" ]; then
-				echo "REMOTE_PATHS[$i] is empty."
-				exit 1
+				empty_remote=$((empty_remote + 1))
 			fi
 			if [ -z "${LOCAL_NAMES[$i]:-}" ]; then
 				echo "LOCAL_NAMES[$i] is empty."
@@ -233,6 +233,10 @@ validate_config_sh() {
 			fi
 			i=$((i + 1))
 		done
+		if [ "$empty_remote" -gt 1 ]; then
+			echo "At most one REMOTE_PATHS entry may be empty (OneDrive root); found $empty_remote."
+			exit 1
+		fi
 
 		if [ "$skip_external" != 1 ] && [ -z "${EXTERNAL_VOLUME_NAME:-}" ]; then
 			echo "EXTERNAL_VOLUME_NAME must be set, or pass the volume as: ./install.sh YourVolumeName"
