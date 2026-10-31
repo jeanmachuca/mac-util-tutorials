@@ -1,4 +1,5 @@
-# Local rclone config (OneDrive folder names, etc.) — never commit
+# Local rclone configs (personal folder names) — never commit
 mac-startup-scripts/rclone-onedrive-setup/config.sh
+mac-startup-scripts/rclone-gdrive-setup/config.sh
 config.sh
 .DS_Store
