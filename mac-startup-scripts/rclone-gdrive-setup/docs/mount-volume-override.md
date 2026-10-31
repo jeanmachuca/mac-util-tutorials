@@ -1,0 +1,45 @@
+# Optional `MOUNT_VOLUME_OVERRIDE`
+
+`config.sh` can define **`MOUNT_VOLUME_OVERRIDE`** as a **bash array** with the **same length** as **`REMOTE_PATHS`**, **`LOCAL_NAMES`**, and **`CACHE_MAX_SIZE`**.
+
+For each index **`i`**:
+
+- **`MOUNT_VOLUME_OVERRIDE[i]`** empty (`""`) → that mount uses the **default volume** passed to **`mount_gdrive.sh`** (same as **`EXTERNAL_VOLUME_NAME`** when you use **`login.sh`** / LaunchAgent).
+- **`MOUNT_VOLUME_OVERRIDE[i]`** non-empty → that row is mounted under:
+
+  **`/Volumes/<override>/GoogleDrive/<LOCAL_NAMES[i]>/`**
+
+  instead of **`/Volumes/<default>/GoogleDrive/...`**.
+
+So you can split **different Google Drive folders** onto **different disks or partitions** (for example **APFS** for one tree and **exFAT** for the rest) while keeping **one `config.sh`** and **one** `rclone` remote.
+
+## When this is useful
+
+- **Mixed filesystems on one physical disk** — e.g. a small **APFS** volume for paths that need **macOS-native** behavior (metadata, bundles) and a large **exFAT** volume for cross-platform bulk storage and other mounts (see [apfs-cache-partition-exfat-example.md](apfs-cache-partition-exfat-example.md) for cache layout; this doc is about **where the FUSE mount points live**, not only cache). A **three-volume** layout (exFAT + APFS work + APFS cache) is sketched in [external-disk-exfat-apfs-work-cache-example.md](external-disk-exfat-apfs-work-cache-example.md).
+- **Multiple external volumes** — e.g. **`EXT1TB`** for most mounts and **`VideoSSD`** for a heavy **video** folder, all in one config.
+- **Same machine, different disks** — default argument to **`mount_gdrive.sh`** is still the “main” volume; overrides pick **other** `/Volumes/...` names when needed.
+
+## Requirements
+
+1. **Every** override volume that appears in **`MOUNT_VOLUME_OVERRIDE`** must **exist** under **`/Volumes/`** before **`mount_gdrive.sh`** runs (disk plugged in, volume mounted).
+2. **`CACHE_DIR`**, if set, remains **global**: all mounts still share that **`--cache-dir`** unless you change the scripts.
+3. **`unmount_gdrive.sh`** reads **`config.sh`**, unmounts **each configured target path**, **`pkill`s** `rclone` per involved volume, then **`diskutil eject`s each distinct** data volume used (unless **`--no-eject`**). Pass the **same default `<DriveName>`** you use with **`mount_gdrive.sh`** (rows with `""` use that name).
+
+## Edge cases
+
+| Situation | Note |
+|-----------|------|
+| **Duplicate `LOCAL_NAMES` on the same volume** | Two rows with the same **`LOCAL_NAMES`** entry and the **same** resolved volume → **same mountpoint**; the second mount would **collide** with the first. Use **unique** folder names per volume, or different volumes. |
+| **Finder / favorites** | Each row may point to a **different** `/Volumes/...` path; sidebar shortcuts must match **actual** paths after mount. |
+| **`--no-eject` with multiple data volumes** | Skips **all** `diskutil eject` calls; eject manually when appropriate. |
+| **Ejecting one partition removes the whole USB disk** | On some enclosures, **`diskutil eject`** on the first volume **unmounts the entire device**, so **`/Volumes/<other>`** disappears before the script reaches it. **`unmount_gdrive.sh`** then **skips** eject for paths that are **already gone** (not an error). |
+| **LaunchAgent** | Still passes **one** volume name (usually **`EXTERNAL_VOLUME_NAME`**); overrides in **`MOUNT_VOLUME_OVERRIDE`** do **not** change that argument—they only change **which rows** use other volumes. |
+| **Final Cut Pro / consolidated libraries on an APFS override volume** | **`/Volumes/<override>/GoogleDrive/…`** is still **`rclone mount` + FUSE**, not native local disk—**open** **`.fcpbundle`** libraries (including **consolidated**) there often **stall** or misbehave. Put **active** libraries **on the same APFS volume but outside `GoogleDrive/`** (e.g. **`/Volumes/MyWorkAPFS/Final Cut Libraries/…`**); copy the **closed** bundle to Google Drive when you want it **in the cloud**. See [external-disk-exfat-apfs-work-cache-example.md](external-disk-exfat-apfs-work-cache-example.md#fcp-libraries-vs-google-drive-mount). |
+
+## Shared drives are a separate selector
+
+**`MOUNT_VOLUME_OVERRIDE`** only changes the **local volume**. To choose a **Google Shared Drive** for a row, use the optional **`GDRIVE_TEAM_DRIVE`** array in **`config.sh`** (same length as **`REMOTE_PATHS`**). To mount a row from **“Shared with me”**, use **`GDRIVE_SHARED_WITH_ME`** with **`"1"`** for that row. See the main README.
+
+## Omitting the array (backward compatible)
+
+If **`MOUNT_VOLUME_OVERRIDE`** is **missing** or **empty**, the scripts behave as before: **all** mounts use **only** the **`DriveName`** argument to **`mount_gdrive.sh`**.
